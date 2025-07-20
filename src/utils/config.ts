@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import TOML from '@iarna/toml';
 
 export interface ModelConfig {
   id: string;
@@ -150,7 +151,7 @@ export class ConfigManager {
   private configPath: string;
 
   private constructor() {
-    this.configPath = path.join(os.homedir(), '.config', 'nootropic', 'config.json');
+    this.configPath = path.join(os.homedir(), '.config', 'nootropic', 'config.toml');
     this.config = this.loadConfig();
   }
 
@@ -165,14 +166,14 @@ export class ConfigManager {
     try {
       if (fs.existsSync(this.configPath)) {
         const configData = fs.readFileSync(this.configPath, 'utf8');
-        const userConfig = JSON.parse(configData);
+        const userConfig = TOML.parse(configData) as Partial<Config>;
         return this.mergeWithDefaults(userConfig);
       } else {
         console.log('\n📝 No config file found. Creating default config...');
         this.createSampleConfig();
         console.log(`📁 Config created at: ${this.configPath}`);
         console.log('\n⚠️  Please update the API keys in the config file and restart the server.');
-        console.log('   Edit: ~/.config/nootropic/config.json');
+        console.log('   Edit: ~/.config/nootropic/config.toml');
         console.log('   Add your actual API keys for each provider (OpenAI, Groq, OpenRouter, etc.)');
         process.exit(0);
       }
@@ -221,7 +222,7 @@ export class ConfigManager {
 
   public createSampleConfig(): void {
     this.createConfigDirectory();
-    fs.writeFileSync(this.configPath, JSON.stringify(DEFAULT_CONFIG, null, 2));
+    fs.writeFileSync(this.configPath, TOML.stringify(DEFAULT_CONFIG as any));
     console.log(`Sample config created at: ${this.configPath}`);
   }
 }

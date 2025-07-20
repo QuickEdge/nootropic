@@ -1,0 +1,99 @@
+[logging]
+enabled = true
+level = "info"
+format = "json"
+
+[server]
+port = 3000
+host = "localhost"
+
+[server.cors]
+enabled = true
+origins = ["*"]
+
+[[models]]
+id = "claude-3-5-sonnet-20241022"
+display_name = "Claude 3.5 Sonnet"
+provider = "openai"
+
+[models.config]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-openai-key-here"
+model_name = "gpt-4o"
+max_tokens = 128000
+temperature_range = [0, 2]
+supports_streaming = true
+supports_tools = true
+supports_vision = true
+
+[models.pricing]
+input_per_1k = 0.003
+output_per_1k = 0.015
+
+[[models]]
+id = "claude-3-opus-20240229"
+display_name = "Claude 3 Opus"
+provider = "openai"
+
+[models.config]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-openai-key-here"
+model_name = "gpt-4"
+max_tokens = 8192
+temperature_range = [0, 2]
+supports_streaming = true
+supports_tools = true
+supports_vision = true
+
+[models.pricing]
+input_per_1k = 0.03
+output_per_1k = 0.06
+
+[[models]]
+id = "claude-3-haiku-20240307"
+display_name = "Claude 3 Haiku"
+provider = "openai"
+
+[models.config]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-openai-key-here"
+model_name = "gpt-4o-mini"
+max_tokens = 16384
+temperature_range = [0, 2]
+supports_streaming = true
+supports_tools = true
+supports_vision = true
+
+[models.pricing]
+input_per_1k = 0.00015
+output_per_1k = 0.0006
+
+[[models]]
+id = "claude-3-5-sonnet-20241022-groq"
+display_name = "Claude 3.5 Sonnet (Groq)"
+provider = "groq"
+
+[models.config]
+base_url = "https://api.groq.com/openai/v1"
+api_key = "gsk_your_groq_key_here"
+model_name = "llama-3.1-70b-versatile"
+max_tokens = 8192
+temperature_range = [0, 2]
+supports_streaming = true
+supports_tools = true
+supports_vision = false
+
+[defaults]
+model = "claude-3-5-sonnet-20241022"
+max_tokens = 4096
+temperature = 0.7
+stream = false
+
+[rate_limits]
+requests_per_minute = 60
+tokens_per_minute = 100000
+
+[cache]
+enabled = false
+ttl = 300
+max_size = 1000

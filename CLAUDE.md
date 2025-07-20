@@ -43,6 +43,10 @@ npm install
 # Set up environment variables
 cp .env.example .env
 # Edit .env with your Anthropic API key
+
+# Set up configuration file
+cp config.example.toml ~/.config/nootropic/config.toml
+# Edit ~/.config/nootropic/config.toml with your API keys
 ```
 
 ### Development Server
