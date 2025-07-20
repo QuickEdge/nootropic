@@ -22,6 +22,7 @@
         "api_key": "sk-your-openai-key-here",
         "model_name": "gpt-4o",
         "max_tokens": 128000,
+        "// Note": "Following fields are for /v1/models endpoint only - not sent to OpenAI",
         "temperature_range": [0, 2],
         "supports_streaming": true,
         "supports_tools": true,
@@ -78,26 +79,11 @@
         "base_url": "https://api.groq.com/openai/v1",
         "api_key": "gsk_your_groq_key_here",
         "model_name": "llama-3.1-70b-versatile",
-        "max_tokens": 8000,
+        "max_tokens": 8192,
         "temperature_range": [0, 2],
         "supports_streaming": true,
         "supports_tools": true,
         "supports_vision": false
-      }
-    },
-    {
-      "id": "claude-3-5-sonnet-20241022-openrouter",
-      "display_name": "Claude 3.5 Sonnet (OpenRouter)",
-      "provider": "openrouter",
-      "config": {
-        "base_url": "https://openrouter.ai/api/v1",
-        "api_key": "sk-or-v1-your-openrouter-key-here",
-        "model_name": "anthropic/claude-3.5-sonnet-20241022",
-        "max_tokens": 200000,
-        "temperature_range": [0, 2],
-        "supports_streaming": true,
-        "supports_tools": true,
-        "supports_vision": true
       }
     }
   ],

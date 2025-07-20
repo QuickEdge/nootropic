@@ -147,8 +147,70 @@ The proxy automatically maps Anthropic model names to OpenAI models:
 ### Available Endpoints
 
 - `POST /v1/messages` - Messages (Anthropic-compatible)
+- `GET /v1/models` - Model listing (Anthropic-compatible)
+- `GET /v1/models/:id` - Specific model details
 - `GET /health` - Health check endpoint
 - `GET /` - Basic info endpoint
+
+### Configuration
+
+The proxy uses a JSON configuration file located at `~/.config/nootropic/config.json`. This replaces all environment variables.
+
+#### Configuration Structure
+
+```json
+{
+  "logging": {
+    "enabled": true,           // Enable/disable logging
+    "level": "info",           // debug|info|warn|error
+    "format": "json"           // json|text
+  },
+  "server": {
+    "port": 3000,
+    "host": "localhost",
+    "cors": { "enabled": true, "origins": ["*"] }
+  },
+  "models": [
+    {
+      "id": "claude-3-5-sonnet-20241022",
+      "display_name": "Claude 3.5 Sonnet",
+      "provider": "openai",
+      "config": {
+        "base_url": "https://api.openai.com/v1",    // ✅ Used by OpenAI API
+        "api_key": "sk-your-key",                   // ✅ Used by OpenAI API
+        "model_name": "gpt-4o",                     // ✅ Used by OpenAI API
+        "max_tokens": 128000,                       // ✅ Used by OpenAI API
+        "temperature_range": [0, 2],                // ❌ For /v1/models only
+        "supports_streaming": true,                 // ❌ For /v1/models only
+        "supports_tools": true,                     // ❌ For /v1/models only
+        "supports_vision": true                     // ❌ For /v1/models only
+      }
+    }
+  ],
+  "defaults": {
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 4096,
+    "temperature": 0.7,
+    "stream": false
+  }
+}
+```
+
+#### Configuration Fields Explained
+
+**Used by OpenAI API:**
+- `config.base_url`: The OpenAI-compatible API endpoint
+- `config.api_key`: Your API key for the provider
+- `config.model_name`: The actual model name the provider expects
+- `config.max_tokens`: Maximum tokens reported to Anthropic clients
+
+**Used for /v1/models endpoint only:**
+- `temperature_range`: Advertised to Anthropic clients as supported range
+- `supports_streaming`: Tells Anthropic clients if streaming is supported
+- `supports_tools`: Tells Anthropic clients if tool use is supported
+- `supports_vision`: Tells Anthropic clients if vision input is supported
+
+**Note**: These "support" fields don't affect actual OpenAI API calls - they simply inform Anthropic clients about capabilities. The actual feature support depends on the underlying OpenAI-compatible model you configure.
 
 ## API Examples
 
