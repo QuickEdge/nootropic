@@ -3,6 +3,7 @@ import { AnthropicRequest } from '../types';
 import { TranslationService } from '../services/translation';
 import { OpenAIService } from '../services/openai';
 import { createError } from '../middleware/error-handler';
+import { ConfigManager } from '../utils/config';
 
 const router = Router();
 
@@ -19,10 +20,18 @@ router.post('/', async (req, res, next) => {
     }
 
     if (!request.max_tokens) {
-      throw createError('Max tokens is required', 400, 'invalid_request_error');
+      const config = ConfigManager.getInstance();
+      request.max_tokens = config.getConfig().defaults.max_tokens;
     }
 
-    const openAIService = new OpenAIService();
+    const config = ConfigManager.getInstance();
+    const modelConfig = config.getModelConfig(request.model);
+    
+    if (!modelConfig) {
+      throw createError(`Model ${request.model} not found`, 400, 'invalid_request_error');
+    }
+
+    const openAIService = new OpenAIService(modelConfig);
     const openAIRequest = TranslationService.anthropicToOpenAI(request);
 
     if (request.stream) {

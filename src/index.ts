@@ -1,29 +1,35 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { messagesRouter } from './routes/messages';
+import { modelsRouter } from './routes/models';
 import { errorHandler } from './middleware/error-handler';
+import { ConfigManager } from './utils/config';
 
-dotenv.config();
+const config = ConfigManager.getInstance().getConfig();
 
 const app = express();
-const port = process.env.NOOTROPIC_PORT || process.env.PORT || 3000;
+const port = config.server.port;
 
-app.use(cors());
+if (config.server.cors.enabled) {
+  app.use(cors({
+    origin: config.server.cors.origins
+  }));
+}
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.json({ message: 'OpenAI Anthropic Proxy Server' });
+  res.json({ message: 'OpenAI Anthropic Proxy Server', version: '1.0.0' });
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', uptime: process.uptime() });
 });
 
 app.use('/v1/messages', messagesRouter);
+app.use('/v1/models', modelsRouter);
 
 app.use(errorHandler);
 
-app.listen(port, () => {
-  console.log(`OpenAI Anthropic Proxy listening on port ${port}`);
+app.listen(port, config.server.host, () => {
+  console.log(`OpenAI Anthropic Proxy listening on ${config.server.host}:${port}`);
 });

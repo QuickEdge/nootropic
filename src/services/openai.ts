@@ -1,21 +1,22 @@
 import axios, { AxiosInstance } from 'axios';
 import { OpenAIChatRequest, OpenAIChatResponse } from '../types';
+import { ModelConfig } from '../utils/config';
 
 export class OpenAIService {
   private client: AxiosInstance;
+  private modelConfig: ModelConfig;
 
-  constructor(apiKey?: string, baseURL?: string) {
-    const key = apiKey || process.env.NOOTROPIC_API_KEY;
-    const url = baseURL || process.env.NOOTROPIC_API_BASE_URL || 'https://api.openai.com';
-
-    if (!key) {
-      throw new Error('NOOTROPIC_API_KEY is required');
+  constructor(modelConfig: ModelConfig) {
+    this.modelConfig = modelConfig;
+    
+    if (!modelConfig.config.api_key) {
+      throw new Error('API key is required for model ${modelConfig.id}');
     }
 
     this.client = axios.create({
-      baseURL: url,
+      baseURL: modelConfig.config.base_url,
       headers: {
-        'Authorization': `Bearer ${key}`,
+        'Authorization': `Bearer ${modelConfig.config.api_key}`,
         'Content-Type': 'application/json',
       },
       timeout: 60000,

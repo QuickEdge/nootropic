@@ -8,6 +8,7 @@ import {
   AnthropicTool,
   AnthropicResponse,
   OpenAIChatResponse } from '../types';
+import { ConfigManager } from '../utils/config';
 
 export class TranslationService {
   static anthropicToOpenAI(request: AnthropicRequest): OpenAIChatRequest {
@@ -111,7 +112,14 @@ export class TranslationService {
     return 'auto';
   }
 
-  private static translateModel(model: string): string {
+  private static translateModel(anthropicModel: string): string {
+    const config = ConfigManager.getInstance();
+    const model = config.getModelConfig(anthropicModel);
+    
+    if (model && model.config.model_name) {
+      return model.config.model_name;
+    }
+    
     const modelMap: Record<string, string> = {
       'claude-3-opus-20240229': 'gpt-4',
       'claude-3-sonnet-20240229': 'gpt-4-turbo',
@@ -120,7 +128,7 @@ export class TranslationService {
       'claude-3-haiku-20240307': 'gpt-3.5-turbo',
     };
 
-    return process.env.NOOTROPIC_MODEL_NAME || modelMap[model] || 'gpt-4-turbo';
+    return modelMap[anthropicModel] || 'gpt-4-turbo';
   }
 
   static openAIToAnthropic(response: OpenAIChatResponse, originalModel: string): AnthropicResponse {
