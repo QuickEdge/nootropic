@@ -19,7 +19,7 @@ export const errorHandler = (
     error: {
       message: error.message,
       type,
-      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      ...(process.env.NOOTROPIC_NODE_ENV === 'development' && { stack: error.stack })
     }
   });
 };

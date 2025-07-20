@@ -10,38 +10,38 @@ import {
   OpenAIChatResponse } from '../types';
 
 export class TranslationService {
-  static openAIToAnthropic(request: OpenAIChatRequest): AnthropicRequest {
-    const { messages } = request;
+  static anthropicToOpenAI(request: AnthropicRequest): OpenAIChatRequest {
+    const { messages, system } = request;
     
-    const systemMessages = messages.filter(msg => msg.role === 'system');
-    const conversationMessages = messages.filter(msg => msg.role !== 'system');
+    const openAIMessages: OpenAIChatMessage[] = [];
     
-    const systemPrompt = systemMessages.length > 0 
-      ? systemMessages.map(msg => 
-          typeof msg.content === 'string' ? msg.content : 
-          Array.isArray(msg.content) ? msg.content.map(c => c.type === 'text' ? c.text : '').join('') : ''
-        ).join('\n')
-      : undefined;
-
-    const anthropicMessages: AnthropicMessage[] = conversationMessages.map(msg => 
-      this.translateOpenAIMessage(msg)
+    if (system) {
+      openAIMessages.push({
+        role: 'system',
+        content: system
+      });
+    }
+    
+    const conversationMessages = messages.map(msg => 
+      this.translateAnthropicMessage(msg)
     );
+    
+    openAIMessages.push(...conversationMessages);
 
     return {
       model: this.translateModel(request.model),
-      max_tokens: request.max_tokens || 4096,
-      messages: anthropicMessages,
-      system: systemPrompt,
+      max_tokens: request.max_tokens,
+      messages: openAIMessages,
       temperature: request.temperature,
       top_p: request.top_p,
       stream: request.stream,
-      tools: request.tools ? this.translateTools(request.tools) : undefined,
-      tool_choice: request.tool_choice ? this.translateToolChoice(request.tool_choice) : undefined,
-      stop_sequences: Array.isArray(request.stop) ? request.stop : request.stop ? [request.stop] : undefined,
+      tools: request.tools ? this.translateAnthropicTools(request.tools) : undefined,
+      tool_choice: request.tool_choice ? this.translateAnthropicToolChoice(request.tool_choice) : undefined,
+      stop: request.stop_sequences ? request.stop_sequences[0] : undefined,
     };
   }
 
-  private static translateOpenAIMessage(message: OpenAIChatMessage): AnthropicMessage {
+  private static translateAnthropicMessage(message: AnthropicMessage): OpenAIChatMessage {
     const role = message.role === 'assistant' ? 'assistant' : 'user';
     
     if (typeof message.content === 'string') {
@@ -51,26 +51,19 @@ export class TranslationService {
       };
     }
 
-    const content: AnthropicContent[] = message.content.map(item => {
+    const content: OpenAIContent[] = message.content.map(item => {
       if (item.type === 'text') {
         return {
           type: 'text',
           text: item.text || '',
         };
-      } else if (item.type === 'image_url') {
-        const imageUrl = item.image_url?.url || '';
-        const isBase64 = imageUrl.startsWith('data:');
-        
-        if (isBase64) {
-          const [header, data] = imageUrl.split(',');
-          const mediaType = header.split(';')[0].split(':')[1];
-          
+      } else if (item.type === 'image') {
+        const source = item.source;
+        if (source && source.type === 'base64') {
           return {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType as any,
-              data: data || '',
+            type: 'image_url',
+            image_url: {
+              url: `data:${source.media_type};base64,${source.data}`,
             },
           };
         }
@@ -88,84 +81,108 @@ export class TranslationService {
     };
   }
 
-  private static translateTools(tools: OpenAITool[]): AnthropicTool[] {
+  private static translateAnthropicTools(tools: AnthropicTool[]): OpenAITool[] {
     return tools.map(tool => ({
-      name: tool.function.name,
-      description: tool.function.description,
-      input_schema: tool.function.parameters,
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.input_schema,
+      },
     }));
   }
 
-  private static translateToolChoice(toolChoice: any): any {
-    if (toolChoice === 'none') {
-      return { type: 'auto' };
+  private static translateAnthropicToolChoice(toolChoice: any): any {
+    if (!toolChoice) {
+      return 'auto';
     }
-    if (toolChoice === 'auto') {
-      return { type: 'auto' };
+    if (toolChoice.type === 'auto') {
+      return 'auto';
     }
-    if (typeof toolChoice === 'object' && toolChoice.type === 'function') {
+    if (toolChoice.type === 'any') {
+      return 'auto';
+    }
+    if (toolChoice.type === 'tool') {
       return {
-        type: 'tool',
-        name: toolChoice.function.name,
+        type: 'function',
+        function: { name: toolChoice.name },
       };
     }
-    return { type: 'auto' };
+    return 'auto';
   }
 
   private static translateModel(model: string): string {
     const modelMap: Record<string, string> = {
-      'gpt-4': 'claude-3-opus-20240229',
-      'gpt-4-turbo': 'claude-3-sonnet-20240229',
-      'gpt-3.5-turbo': 'claude-3-haiku-20240307',
-      'gpt-4-turbo-preview': 'claude-3-sonnet-20240229',
-      'gpt-4o': 'claude-3-5-sonnet-20241022',
-      'gpt-4o-mini': 'claude-3-haiku-20240307',
+      'claude-3-opus-20240229': 'gpt-4',
+      'claude-3-sonnet-20240229': 'gpt-4-turbo',
+      'claude-3-5-sonnet-20241022': 'gpt-4o',
+      'claude-3-haiku-20240307': 'gpt-4o-mini',
+      'claude-3-haiku-20240307': 'gpt-3.5-turbo',
     };
 
-    return modelMap[model] || 'claude-3-sonnet-20240229';
+    return process.env.NOOTROPIC_MODEL_NAME || modelMap[model] || 'gpt-4-turbo';
   }
 
-  static anthropicToOpenAI(response: AnthropicResponse, originalModel: string): OpenAIChatResponse {
-    const content = response.content
-      .filter(c => c.type === 'text')
-      .map(c => c.text || '')
-      .join('');
+  static openAIToAnthropic(response: OpenAIChatResponse, originalModel: string): AnthropicResponse {
+    const choice = response.choices[0];
+    const message = choice.message;
+    
+    const content: AnthropicContent[] = [];
+    
+    if (typeof message.content === 'string') {
+      content.push({
+        type: 'text',
+        text: message.content,
+      });
+    } else if (Array.isArray(message.content)) {
+      message.content.forEach(item => {
+        if (item.type === 'text') {
+          content.push({
+            type: 'text',
+            text: item.text || '',
+          });
+        }
+      });
+    }
 
-    const toolCalls = response.content
-      .filter(c => c.type === 'tool_use')
-      .map(c => ({
-        id: c.id || '',
-        type: 'function' as const,
-        function: {
-          name: c.name || '',
-          arguments: JSON.stringify(c.input || {}),
-        },
-      }));
+    if (message.tool_calls) {
+      message.tool_calls.forEach(toolCall => {
+        content.push({
+          type: 'tool_use',
+          id: toolCall.id,
+          name: toolCall.function.name,
+          input: JSON.parse(toolCall.function.arguments),
+        });
+      });
+    }
 
-    const message: OpenAIChatMessage = {
-      role: 'assistant',
-      content,
-      ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
-    };
-
-    const finishReason = this.translateFinishReason(response.stop_reason);
+    const stopReason = this.translateOpenAIFinishReason(choice.finish_reason);
 
     return {
       id: response.id,
-      object: 'chat.completion',
-      created: Math.floor(Date.now() / 1000),
+      type: 'message',
+      role: 'assistant',
+      content,
       model: originalModel,
-      choices: [{
-        index: 0,
-        message,
-        finish_reason: finishReason,
-      }],
+      stop_reason: stopReason,
       usage: {
-        prompt_tokens: response.usage.input_tokens,
-        completion_tokens: response.usage.output_tokens,
-        total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+        input_tokens: response.usage.prompt_tokens,
+        output_tokens: response.usage.completion_tokens,
       },
     };
+  }
+
+  private static translateOpenAIFinishReason(reason: string | undefined): 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' {
+    switch (reason) {
+      case 'stop':
+        return 'end_turn';
+      case 'length':
+        return 'max_tokens';
+      case 'tool_calls':
+        return 'tool_use';
+      default:
+        return 'end_turn';
+    }
   }
 
   private static translateFinishReason(reason: string): 'stop' | 'length' | 'tool_calls' | 'content_filter' {

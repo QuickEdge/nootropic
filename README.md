@@ -1,15 +1,15 @@
-# Anthropic OpenAI Proxy
+# OpenAI Anthropic Proxy
 
-A reverse proxy that wraps the Anthropic API to conform to OpenAI's protocol, allowing you to use Anthropic Claude models as drop-in replacements for OpenAI GPT models in existing applications.
+A reverse proxy that wraps the OpenAI API to conform to Anthropic's protocol, allowing you to use OpenAI GPT models as drop-in replacements for Anthropic Claude models in existing applications.
 
 ## Features
 
-- **Drop-in replacement**: Use with any OpenAI client library
+- **Drop-in replacement**: Use with any Anthropic client library
 - **Streaming support**: Real-time streaming responses
 - **Tool calling**: Function calling capabilities
 - **Multi-modal**: Support for images and text
 - **Error handling**: Proper HTTP status codes and error messages
-- **Model mapping**: Automatic translation between OpenAI and Anthropic model names
+- **Model mapping**: Automatic translation between Anthropic and OpenAI model names
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ npm install
 3. Configure environment variables:
 ```bash
 cp .env.example .env
-# Edit .env and add your Anthropic API key
+# Edit .env and add your OpenAI API key
 ```
 
 4. Start the server:
@@ -48,14 +48,16 @@ The server will start on port 3000 by default.
 
 ### Basic Usage
 
-Use the proxy exactly like you would use the OpenAI API, but with the proxy URL:
+Use the proxy exactly like you would use the Anthropic API, but with the proxy URL:
 
 ```bash
-curl -X POST http://localhost:3000/v1/chat/completions \
+curl -X POST http://localhost:3000/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer any-key" \
+  -H "x-api-key: any-key" \
+  -H "anthropic-version: 2023-06-01" \
   -d '{
-    "model": "gpt-4",
+    "model": "claude-3-sonnet-20240229",
+    "max_tokens": 1024,
     "messages": [
       {"role": "user", "content": "Hello, how are you?"}
     ]
@@ -65,69 +67,71 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 ### JavaScript/Node.js
 
 ```javascript
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
-const openai = new OpenAI({
-  baseURL: 'http://localhost:3000/v1',
-  apiKey: 'any-key', // API key is ignored, Anthropic key is used from env
+const anthropic = new Anthropic({
+  baseURL: 'http://localhost:3000',
+  apiKey: 'any-key', // API key is ignored, OpenAI key is used from env
 });
 
-const completion = await openai.chat.completions.create({
-  model: 'gpt-4',
+const message = await anthropic.messages.create({
+  model: 'claude-3-sonnet-20240229',
+  max_tokens: 1024,
   messages: [
     { role: 'user', content: 'Hello, world!' }
   ],
 });
 
-console.log(completion.choices[0].message.content);
+console.log(message.content[0].text);
 ```
 
 ### Python
 
 ```python
-import openai
+import anthropic
 
-client = openai.OpenAI(
-    base_url="http://localhost:3000/v1",
+client = anthropic.Anthropic(
+    base_url="http://localhost:3000",
     api_key="any-key"
 )
 
-response = client.chat.completions.create(
-    model="gpt-4",
+message = client.messages.create(
+    model="claude-3-sonnet-20240229",
+    max_tokens=1024,
     messages=[
         {"role": "user", "content": "Hello, world!"}
     ]
 )
 
-print(response.choices[0].message.content)
+print(message.content[0].text)
 ```
 
 ### Streaming
 
 ```javascript
-const stream = await openai.chat.completions.create({
-  model: 'gpt-4',
+const stream = await anthropic.messages.create({
+  model: 'claude-3-sonnet-20240229',
+  max_tokens: 1024,
   messages: [{ role: 'user', content: 'Tell me a story' }],
   stream: true,
 });
 
 for await (const chunk of stream) {
-  process.stdout.write(chunk.choices[0]?.delta?.content || '');
+  process.stdout.write(chunk.delta?.text || '');
 }
 ```
 
 ## Model Mapping
 
-The proxy automatically maps OpenAI model names to Anthropic models:
+The proxy automatically maps Anthropic model names to OpenAI models:
 
-| OpenAI Model | Anthropic Model |
-|--------------|-----------------|
-| gpt-4 | claude-3-opus-20240229 |
-| gpt-4-turbo | claude-3-sonnet-20240229 |
-| gpt-4-turbo-preview | claude-3-sonnet-20240229 |
-| gpt-4o | claude-3-5-sonnet-20241022 |
-| gpt-4o-mini | claude-3-haiku-20240307 |
-| gpt-3.5-turbo | claude-3-haiku-20240307 |
+| Anthropic Model | OpenAI Model |
+|-----------------|--------------|
+| claude-3-opus-20240229 | gpt-4 |
+| claude-3-sonnet-20240229 | gpt-4-turbo |
+| claude-3-5-sonnet-20241022 | gpt-4o |
+| claude-3-haiku-20240307 | gpt-4o-mini |
+| claude-3-haiku-20240307 | gpt-3.5-turbo |
 
 ## Configuration
 
@@ -135,14 +139,14 @@ The proxy automatically maps OpenAI model names to Anthropic models:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key | Required |
+| `OPENAI_API_KEY` | Your OpenAI API key | Required |
 | `PORT` | Server port | 3000 |
 | `NODE_ENV` | Environment mode | development |
 | `LOG_LEVEL` | Logging level | info |
 
 ### Available Endpoints
 
-- `POST /v1/chat/completions` - Chat completions (OpenAI-compatible)
+- `POST /v1/messages` - Messages (Anthropic-compatible)
 - `GET /health` - Health check endpoint
 - `GET /` - Basic info endpoint
 
@@ -152,9 +156,22 @@ The proxy automatically maps OpenAI model names to Anthropic models:
 
 ```json
 {
-  "model": "gpt-4",
+  "model": "claude-3-sonnet-20240229",
+  "max_tokens": 1024,
   "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "What is the capital of France?"}
+  ]
+}
+```
+
+### With System Prompt
+
+```json
+{
+  "model": "claude-3-sonnet-20240229",
+  "max_tokens": 1024,
+  "system": "You are a helpful assistant.",
+  "messages": [
     {"role": "user", "content": "What is the capital of France?"}
   ]
 }
@@ -164,13 +181,24 @@ The proxy automatically maps OpenAI model names to Anthropic models:
 
 ```json
 {
-  "model": "gpt-4",
+  "model": "claude-3-sonnet-20240229",
+  "max_tokens": 1024,
   "messages": [
     {
       "role": "user",
       "content": [
-        {"type": "text", "text": "What's in this image?"},
-        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQ..."}}
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/jpeg",
+            "data": "/9j/4AAQ..."
+          }
+        },
+        {
+          "type": "text",
+          "text": "What's in this image?"
+        }
       ]
     }
   ]
@@ -181,21 +209,19 @@ The proxy automatically maps OpenAI model names to Anthropic models:
 
 ```json
 {
-  "model": "gpt-4",
+  "model": "claude-3-sonnet-20240229",
+  "max_tokens": 1024,
   "messages": [
     {"role": "user", "content": "What's the weather in San Francisco?"}
   ],
   "tools": [
     {
-      "type": "function",
-      "function": {
-        "name": "get_weather",
-        "description": "Get weather information",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "location": {"type": "string"}
-          }
+      "name": "get_weather",
+      "description": "Get weather information",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {"type": "string"}
         }
       }
     }
@@ -220,10 +246,10 @@ The proxy automatically maps OpenAI model names to Anthropic models:
 src/
 ├── index.ts                 # Server entry point
 ├── routes/
-│   └── chat-completions.ts  # OpenAI-compatible endpoints
+│   └── messages.ts          # Anthropic-compatible endpoints
 ├── services/
-│   ├── translation.ts       # OpenAI ↔ Anthropic translation
-│   └── anthropic.ts         # Anthropic API client
+│   ├── translation.ts       # Anthropic ↔ OpenAI translation
+│   └── openai.ts            # OpenAI API client
 ├── middleware/
 │   └── error-handler.ts     # Error handling
 └── types/
@@ -232,28 +258,29 @@ src/
 
 ## Error Handling
 
-The proxy returns standard OpenAI error formats:
+The proxy returns standard Anthropic error formats:
 
 ```json
 {
+  "type": "error",
   "error": {
-    "message": "Invalid API key",
-    "type": "invalid_request_error"
+    "type": "authentication_error",
+    "message": "Invalid API key"
   }
 }
 ```
 
 Common errors:
 - `400 Bad Request` - Invalid request format
-- `401 Unauthorized` - Missing or invalid Anthropic API key
+- `401 Unauthorized` - Missing or invalid OpenAI API key
 - `429 Too Many Requests` - Rate limit exceeded
 - `500 Internal Server Error` - Server error
 
 ## Limitations
 
-- **Authentication**: Uses Anthropic API key from environment, ignores OpenAI Authorization header
+- **Authentication**: Uses OpenAI API key from environment, ignores Anthropic x-api-key header
 - **Model Selection**: Limited to pre-defined model mappings
-- **Streaming**: Limited streaming event types compared to OpenAI
+- **Streaming**: Limited streaming event types compared to Anthropic
 - **Tool Responses**: Complex tool use scenarios may have edge cases
 
 ## Contributing
