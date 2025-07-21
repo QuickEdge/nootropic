@@ -25,7 +25,7 @@ router.post('/', async (req, res, next) => {
     }
 
     const config = ConfigManager.getInstance();
-    const modelConfig = config.getModelConfig(request.model);
+    const modelConfig = config.getModelConfigWithFallback(request.model);
     
     if (!modelConfig) {
       throw createError(`Model ${request.model} not found`, 400, 'invalid_request_error');

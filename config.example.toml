@@ -54,6 +54,8 @@ model_name = "llama-3.1-70b-versatile"
 [model_routing]
 # Default model ID - set this to one of your configured model IDs
 default_model_id = "claude-3-5-sonnet-20241022"
+# Route claude-* model requests to default when not found (default: true)
+route_claude_models_to_default = true
 
 [defaults]
 model = "claude-3-5-sonnet-20241022"  # Deprecated - use model_routing.default_model_id instead

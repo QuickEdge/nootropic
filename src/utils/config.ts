@@ -46,6 +46,7 @@ export interface Config {
   };
   model_routing: {
     default_model_id?: string;
+    route_claude_models_to_default?: boolean;
   };
 }
 
@@ -80,7 +81,8 @@ const DEFAULT_CONFIG: Config = {
     max_size: 1000
   },
   model_routing: {
-    default_model_id: undefined
+    default_model_id: undefined,
+    route_claude_models_to_default: true
   }
 };
 
@@ -173,6 +175,24 @@ export class ConfigManager {
 
   public getModelConfig(modelId: string): ModelConfig | undefined {
     return this.config.models.find(model => model.id === modelId);
+  }
+
+  public getModelConfigWithFallback(modelId: string): ModelConfig | undefined {
+    // First try exact match
+    const exactMatch = this.getModelConfig(modelId);
+    if (exactMatch) {
+      return exactMatch;
+    }
+    
+    // If not found and starts with "claude-" and fallback is enabled
+    if (modelId.startsWith('claude-') && this.config.model_routing?.route_claude_models_to_default) {
+      const defaultModelId = this.getDefaultModel();
+      if (defaultModelId) {
+        return this.getModelConfig(defaultModelId);
+      }
+    }
+    
+    return undefined;
   }
 
   public getDefaultModel(): string {
