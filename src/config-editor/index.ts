@@ -11,6 +11,13 @@ export class InteractiveConfigEditor {
   constructor() {
     this.configPath = ConfigManager.getInstance(true).getConfigPath();
     this.config = ConfigManager.getInstance(true).getConfig();
+    
+    // Ensure model_routing section exists
+    if (!this.config.model_routing) {
+      this.config.model_routing = {
+        default_model_id: undefined
+      };
+    }
   }
 
   async run(): Promise<void> {
@@ -34,6 +41,9 @@ export class InteractiveConfigEditor {
             break;
           case 'remove':
             await this.removeModel();
+            break;
+          case 'setDefault':
+            await this.setDefaultModel();
             break;
           case 'view':
             this.viewConfig();
@@ -73,53 +83,35 @@ export class InteractiveConfigEditor {
       prompts.displayName(),
       provider === 'custom' ? prompts.baseUrl(providerConfig.baseUrl) : null,
       prompts.apiKey(providerConfig.name, existingApiKey),
-      prompts.modelName(providerConfig.modelName),
-      prompts.maxTokens(),
-      prompts.temperatureRange(),
-      prompts.supportsStreaming(),
-      prompts.supportsTools(),
-      prompts.supportsVision(provider === 'openai' || provider === 'openrouter'),
-      prompts.isDefault(this.config.models.length > 0)
+      prompts.modelName(providerConfig.modelName)
     ].filter(Boolean));
-
-    // Pricing configuration
-    const pricingAnswers = await inquirer.prompt(prompts.pricing());
-
-    // If this model is set as default, unset any existing default
-    if (modelAnswers.is_default) {
-      this.config.models.forEach(model => {
-        if (model.is_default) {
-          model.is_default = false;
-        }
-      });
-    }
 
     // Create model configuration
     const newModel: ModelConfig = {
       id: modelAnswers.id,
       display_name: modelAnswers.display_name,
       provider: provider === 'custom' ? 'custom' : provider,
-      is_default: modelAnswers.is_default,
       config: {
         base_url: modelAnswers.base_url || providerConfig.baseUrl,
         api_key: modelAnswers.api_key || existingApiKey || '',
-        model_name: modelAnswers.model_name,
-        max_tokens: parseInt(modelAnswers.max_tokens),
-        temperature_range: modelAnswers.temperature_range.split(',').map((s: string) => parseFloat(s.trim())),
-        supports_streaming: modelAnswers.supports_streaming,
-        supports_tools: modelAnswers.supports_tools,
-        supports_vision: modelAnswers.supports_vision
+        model_name: modelAnswers.model_name
       }
     };
 
-    if (pricingAnswers.has_pricing && pricingAnswers.input_per_1k && pricingAnswers.output_per_1k) {
-      newModel.pricing = {
-        input_per_1k: parseFloat(pricingAnswers.input_per_1k),
-        output_per_1k: parseFloat(pricingAnswers.output_per_1k)
-      };
-    }
-
     this.config.models.push(newModel);
+
+    // If this is the first model, or no default is set, set it as default
+    if (this.config.models.length === 1 || !this.config.model_routing?.default_model_id) {
+      if (!this.config.model_routing) {
+        this.config.model_routing = {};
+      }
+      this.config.model_routing.default_model_id = newModel.id;
+      if (this.config.models.length === 1) {
+        console.log(chalk.yellow(`⭐ Set as default model (first model added)\n`));
+      } else {
+        console.log(chalk.yellow(`⭐ Set as default model (no default was set)\n`));
+      }
+    }
 
     console.log(chalk.green(`\n✅ Model "${newModel.display_name}" added successfully!\n`));
   }
@@ -168,71 +160,20 @@ export class InteractiveConfigEditor {
         message: '🤖 Model name:',
         default: model.config?.model_name || '',
         validate: validators.isRequired
-      },
-      {
-        type: 'input',
-        name: 'max_tokens',
-        message: '📊 Max tokens:',
-        default: (model.config?.max_tokens || 4096).toString(),
-        validate: validators.isValidNumber(1, 1000000)
-      },
-      {
-        type: 'input',
-        name: 'temperature_range',
-        message: '🌡️  Temperature range (min, max):',
-        default: (model.config?.temperature_range || [0, 2]).join(', '),
-        validate: validators.isValidTemperatureRange
-      },
-      {
-        type: 'confirm',
-        name: 'supports_streaming',
-        message: '💬 Supports streaming?',
-        default: model.config?.supports_streaming || true
-      },
-      {
-        type: 'confirm',
-        name: 'supports_tools',
-        message: '🛠️  Supports tools/functions?',
-        default: model.config?.supports_tools || true
-      },
-      {
-        type: 'confirm',
-        name: 'supports_vision',
-        message: '👁️  Supports vision?',
-        default: model.config?.supports_vision || false
-      },
-      {
-        type: 'confirm',
-        name: 'is_default',
-        message: '⭐ Set as default model?',
-        default: model.is_default || false
       }
     ]);
 
-    // If this model is set as default, unset any existing default
-    if (updates.is_default && !model.is_default) {
-      this.config.models.forEach((m, idx) => {
-        if (idx !== modelIndex && m.is_default) {
-          m.is_default = false;
-        }
-      });
-    }
+    // No need to handle default model here anymore
 
     // Update model
     this.config.models[modelIndex] = {
       ...model,
       display_name: updates.display_name,
-      is_default: updates.is_default,
       config: {
         ...model.config,
         base_url: updates.base_url,
         api_key: updates.api_key || model.config?.api_key || '',
-        model_name: updates.model_name,
-        max_tokens: parseInt(updates.max_tokens),
-        temperature_range: updates.temperature_range.split(',').map((s: string) => parseFloat(s.trim())),
-        supports_streaming: updates.supports_streaming,
-        supports_tools: updates.supports_tools,
-        supports_vision: updates.supports_vision
+        model_name: updates.model_name
       }
     };
 
@@ -258,6 +199,22 @@ export class InteractiveConfigEditor {
     }
   }
 
+  private async setDefaultModel(): Promise<void> {
+    if (this.config.models.length === 0) {
+      console.log(chalk.yellow('\n⚠️  No models available to set as default.\n'));
+      return;
+    }
+
+    const { modelId } = await inquirer.prompt(prompts.selectDefaultModel(this.config.models, this.config.model_routing?.default_model_id));
+    if (!this.config.model_routing) {
+      this.config.model_routing = {};
+    }
+    this.config.model_routing.default_model_id = modelId;
+    
+    const model = this.config.models.find(m => m.id === modelId);
+    console.log(chalk.green(`\n✅ Default model set to: ${model?.display_name} (${modelId})\n`));
+  }
+
   private viewConfig(): void {
     console.log(chalk.blue.bold('\n📋 Current Configuration\n'));
     console.log(chalk.cyan('Models:'));
@@ -266,17 +223,11 @@ export class InteractiveConfigEditor {
       console.log(chalk.gray('  No models configured'));
     } else {
       this.config.models.forEach((model, index) => {
-        console.log(chalk.white(`  ${index + 1}. ${model.display_name} (${model.id})`));
+        const isDefault = model.id === this.config.model_routing?.default_model_id;
+        console.log(chalk.white(`  ${index + 1}. ${model.display_name} (${model.id})${isDefault ? chalk.yellow(' ⭐ DEFAULT') : ''}`));
         console.log(chalk.gray(`     Provider: ${model.provider}`));
         console.log(chalk.gray(`     Model: ${model.config.model_name}`));
         console.log(chalk.gray(`     Base URL: ${model.config.base_url}`));
-        console.log(chalk.gray(`     Max Tokens: ${model.config.max_tokens}`));
-        console.log(chalk.gray(`     Streaming: ${model.config.supports_streaming ? '✅' : '❌'}`));
-        console.log(chalk.gray(`     Tools: ${model.config.supports_tools ? '✅' : '❌'}`));
-        console.log(chalk.gray(`     Vision: ${model.config.supports_vision ? '✅' : '❌'}`));
-        if (model.pricing) {
-          console.log(chalk.gray(`     Pricing: $${model.pricing.input_per_1k}/$${model.pricing.output_per_1k} per 1K tokens`));
-        }
         console.log();
       });
     }

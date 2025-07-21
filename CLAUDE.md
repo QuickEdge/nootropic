@@ -4,33 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a proxy implementation that wraps the Anthropic API to conform to the OpenAI protocol. The project starts from scratch and implements a translation layer between Anthropic's native API format and OpenAI's API format.
+This is a proxy implementation that accepts requests in Anthropic's API format and translates them to OpenAI-compatible API calls. The project implements a translation layer that allows applications using Anthropic's API to connect to OpenAI-compatible services.
 
 ## Architecture & Structure
 
 The codebase implements a reverse proxy that:
-1. **Receives OpenAI-format requests** on standard OpenAI endpoints (`/v1/chat/completions`, `/v1/completions`, etc.)
-2. **Translates OpenAI schema to Anthropic schema** including message format conversion, parameter mapping, and response structure adaptation
-3. **Proxies requests to Anthropic's API** at `https://api.anthropic.com`
-4. **Translates Anthropic responses back to OpenAI format** including streaming support, error handling, and usage reporting
+1. **Receives Anthropic-format requests** on standard Anthropic endpoints (`/v1/messages`, `/v1/complete`, `/v1/models`, etc.)
+2. **Translates Anthropic schema to OpenAI schema** including message format conversion, parameter mapping, and response structure adaptation
+3. **Proxies requests to OpenAI-compatible APIs** (OpenAI, Groq, OpenRouter, or custom endpoints)
+4. **Translates OpenAI responses back to Anthropic format** including streaming support, error handling, and usage reporting
 
 ## Key Components to Build
 
 ### Core Translation Layer
-- **Schema Mapping**: Convert between OpenAI's schema and Anthropic's schema as defined in `specs/hosted_spec.json`
-- **Message Format Conversion**: Transform OpenAI's `messages` array to Anthropic's format
-- **Parameter Translation**: Map OpenAI parameters (`temperature`, `max_tokens`, etc.) to Anthropic equivalents
-- **Response Formatting**: Convert Anthropic responses to OpenAI's response format
+- **Schema Mapping**: Convert between Anthropic's schema (as defined in `specs/hosted_spec.json`) and OpenAI's schema
+- **Message Format Conversion**: Transform Anthropic's message format to OpenAI's `messages` array
+- **Parameter Translation**: Map Anthropic parameters to OpenAI equivalents (`temperature`, `max_tokens`, etc.)
+- **Response Formatting**: Convert OpenAI responses to Anthropic's response format
 
-### API Endpoints to Implement
-- `POST /v1/chat/completions` - Maps to Anthropic's `/v1/messages`
-- `POST /v1/completions` - Maps to Anthropic's `/v1/complete` (legacy)
-- Streaming support for both endpoints
+### API Endpoints Implemented
+- `POST /v1/messages` - Anthropic's messages endpoint, translates to OpenAI's `/v1/chat/completions`
+- `POST /v1/complete` - Anthropic's legacy completion endpoint, translates to OpenAI's `/v1/completions`
+- `GET /v1/models` - Lists available models in Anthropic's format
+- Streaming support for all endpoints
 - Error handling and status code translation
 
 ### Authentication & Headers
-- **OpenAI-style auth**: Accept `Authorization: Bearer sk-...` headers
-- **Anthropic auth**: Translate to `x-api-key` header for Anthropic
+- **Anthropic-style auth**: Accept `x-api-key` headers from clients
+- **OpenAI auth**: Translate to `Authorization: Bearer` for OpenAI services
 - **Header forwarding**: Handle `anthropic-version`, `anthropic-beta` headers appropriately
 
 ## Development Commands

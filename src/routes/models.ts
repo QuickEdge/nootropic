@@ -5,28 +5,17 @@ const router = Router();
 
 router.get('/', (req, res) => {
   const config = ConfigManager.getInstance().getConfig();
-  const defaultModelId = ConfigManager.getInstance().getDefaultModel();
   
   const modelsResponse = {
     data: config.models.map(model => ({
-      id: model.id,
-      type: 'model',
-      created: Math.floor(Date.now() / 1000),
-      owned_by: model.provider,
-      max_tokens: model.config.max_tokens,
+      created_at: new Date().toISOString(),
       display_name: model.display_name,
-      supports_streaming: model.config.supports_streaming,
-      supports_tools: model.config.supports_tools,
-      supports_vision: model.config.supports_vision,
-      temperature_range: model.config.temperature_range,
-      pricing: model.pricing,
-      is_default: model.is_default || model.id === defaultModelId
+      id: model.id,
+      type: 'model' as const
     })),
-    object: 'list',
-    has_more: false,
     first_id: config.models[0]?.id || null,
-    last_id: config.models[config.models.length - 1]?.id || null,
-    default_model: defaultModelId
+    has_more: false,
+    last_id: config.models[config.models.length - 1]?.id || null
   };
 
   res.json(modelsResponse);
@@ -59,18 +48,10 @@ router.get('/default', (req, res) => {
   }
 
   const modelResponse = {
-    id: model.id,
-    type: 'model',
-    created: Math.floor(Date.now() / 1000),
-    owned_by: model.provider,
-    max_tokens: model.config.max_tokens,
+    created_at: new Date().toISOString(),
     display_name: model.display_name,
-    supports_streaming: model.config.supports_streaming,
-    supports_tools: model.config.supports_tools,
-    supports_vision: model.config.supports_vision,
-    temperature_range: model.config.temperature_range,
-    pricing: model.pricing,
-    is_default: true
+    id: model.id,
+    type: 'model' as const
   };
 
   res.json(modelResponse);
@@ -91,17 +72,10 @@ router.get('/:model', (req, res) => {
   }
 
   const modelResponse = {
-    id: model.id,
-    type: 'model',
-    created: Math.floor(Date.now() / 1000),
-    owned_by: model.provider,
-    max_tokens: model.config.max_tokens,
+    created_at: new Date().toISOString(),
     display_name: model.display_name,
-    supports_streaming: model.config.supports_streaming,
-    supports_tools: model.config.supports_tools,
-    supports_vision: model.config.supports_vision,
-    temperature_range: model.config.temperature_range,
-    pricing: model.pricing
+    id: model.id,
+    type: 'model' as const
   };
 
   res.json(modelResponse);

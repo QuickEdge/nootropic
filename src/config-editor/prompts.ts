@@ -1,6 +1,5 @@
 import { validators } from './validators';
 import { ListQuestion, InputQuestion, PasswordQuestion, ConfirmQuestion } from 'inquirer';
-import { ConfigManager } from '../utils/config';
 
 export interface ProviderConfig {
   name: string;
@@ -9,11 +8,6 @@ export interface ProviderConfig {
   apiKeyPrefix?: string;
 }
 
-interface PricingAnswers {
-  has_pricing: boolean;
-  input_per_1k?: string;
-  output_per_1k?: string;
-}
 
 export const PROVIDERS: Record<string, ProviderConfig> = {
   openrouter: {
@@ -41,11 +35,6 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
   }
 };
 
-const getModelDefaults = () => {
-  const configManager = ConfigManager.getInstance(true);
-  return configManager.getModelDefaults();
-};
-
 export const prompts = {
   mainMenu: (): ListQuestion => ({
     type: 'list',
@@ -55,6 +44,7 @@ export const prompts = {
       { name: '➕ Add a new model', value: 'add' },
       { name: '✏️  Edit existing model', value: 'edit' },
       { name: '🗑️  Remove model', value: 'remove' },
+      { name: '⭐ Set default model', value: 'setDefault' },
       { name: '👀 View current config', value: 'view' },
       { name: '💾 Save and exit', value: 'save' },
       { name: '🚪 Exit without saving', value: 'exit' }
@@ -120,71 +110,6 @@ export const prompts = {
     validate: validators.isRequired
   }),
 
-  maxTokens: (defaultTokens?: number): InputQuestion => ({
-    type: 'input',
-    name: 'max_tokens',
-    message: `📊 Max tokens (default: ${defaultTokens || getModelDefaults().config.max_tokens}):`,
-    default: (defaultTokens || getModelDefaults().config.max_tokens).toString(),
-    validate: validators.isValidNumber(1, 1000000)
-  }),
-
-  temperatureRange: (defaultRange?: [number, number]): InputQuestion => ({
-    type: 'input',
-    name: 'temperature_range',
-    message: `🌡️  Temperature range (min, max - default: ${(defaultRange || getModelDefaults().config.temperature_range).join(', ')}):`,
-    default: (defaultRange || getModelDefaults().config.temperature_range).join(', '),
-    validate: validators.isValidTemperatureRange
-  }),
-
-  supportsStreaming: (defaultValue?: boolean): ConfirmQuestion => ({
-    type: 'confirm',
-    name: 'supports_streaming',
-    message: '💬 Supports streaming?',
-    default: defaultValue !== undefined ? defaultValue : getModelDefaults().config.supports_streaming
-  }),
-
-  supportsTools: (defaultValue?: boolean): ConfirmQuestion => ({
-    type: 'confirm',
-    name: 'supports_tools',
-    message: '🛠️  Supports tools/functions?',
-    default: defaultValue !== undefined ? defaultValue : getModelDefaults().config.supports_tools
-  }),
-
-  supportsVision: (defaultValue?: boolean): ConfirmQuestion => ({
-    type: 'confirm',
-    name: 'supports_vision',
-    message: '👁️  Supports vision (image input)?',
-    default: defaultValue !== undefined ? defaultValue : getModelDefaults().config.supports_vision
-  }),
-
-  isDefault: (hasExistingModels: boolean, defaultValue?: boolean): ConfirmQuestion => ({
-    type: 'confirm',
-    name: 'is_default',
-    message: '⭐ Set as default model?',
-    default: defaultValue !== undefined ? defaultValue : !hasExistingModels
-  }),
-
-  pricing: () => [{
-    type: 'confirm',
-    name: 'has_pricing',
-    message: '💰 Add pricing information?',
-    default: false
-  }, {
-    type: 'input',
-    name: 'input_per_1k',
-    message: '💵 Input price per 1K tokens (USD):',
-    validate: validators.isValidPrice,
-    when: (answers: PricingAnswers) => answers.has_pricing,
-    default: '0.003'
-  }, {
-    type: 'input',
-    name: 'output_per_1k',
-    message: '💵 Output price per 1K tokens (USD):',
-    validate: validators.isValidPrice,
-    when: (answers: PricingAnswers) => answers.has_pricing,
-    default: '0.015'
-  }],
-
   editModelSelection: (models: Array<{ id: string; display_name: string }>): ListQuestion => ({
     type: 'list',
     name: 'modelId',
@@ -210,6 +135,16 @@ export const prompts = {
     name: 'confirm',
     message: `⚠️  Are you sure you want to remove "${modelName}"?`,
     default: false
+  }),
+  
+  selectDefaultModel: (models: Array<{ id: string; display_name: string }>, currentDefault?: string): ListQuestion => ({
+    type: 'list',
+    name: 'modelId',
+    message: '⭐ Select the default model:',
+    choices: models.map(model => ({
+      name: `${model.display_name} (${model.id})${model.id === currentDefault ? ' [current]' : ''}`,
+      value: model.id
+    }))
   }),
 
   saveChanges: (): ConfirmQuestion => ({

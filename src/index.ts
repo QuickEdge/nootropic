@@ -45,12 +45,14 @@ app.use(errorHandler);
 app.listen(port, config.server.host, () => {
   console.log(`\n🚀 OpenAI Anthropic Proxy listening on ${config.server.host}:${port}`);
   console.log(`📊 Configured models: ${config.models.length}`);
-  console.log(`🔧 Default model: ${config.defaults.model || 'none'}`);
+  const defaultModelId = ConfigManager.getInstance().getDefaultModel();
+  console.log(`🔧 Default model: ${defaultModelId || 'none'}`);
   
   if (config.models.length > 0) {
     console.log('\n📋 Available models:');
     config.models.forEach(model => {
-      console.log(`   - ${model.id} (${model.display_name})`);
+      const isDefault = model.id === defaultModelId;
+      console.log(`   - ${model.id} (${model.display_name})${isDefault ? ' [DEFAULT]' : ''}`);
     });
   }
 });

@@ -7,20 +7,10 @@ export interface ModelConfig {
   id: string;
   display_name: string;
   provider: string;
-  is_default?: boolean;
   config: {
     base_url: string;
     api_key: string;
     model_name: string;
-    max_tokens: number;
-    temperature_range: [number, number];
-    supports_streaming: boolean;
-    supports_tools: boolean;
-    supports_vision: boolean;
-  };
-  pricing?: {
-    input_per_1k: number;
-    output_per_1k: number;
   };
 }
 
@@ -54,6 +44,9 @@ export interface Config {
     ttl: number;
     max_size: number;
   };
+  model_routing: {
+    default_model_id?: string;
+  };
 }
 
 const DEFAULT_CONFIG: Config = {
@@ -85,6 +78,9 @@ const DEFAULT_CONFIG: Config = {
     enabled: false,
     ttl: 300,
     max_size: 1000
+  },
+  model_routing: {
+    default_model_id: undefined
   }
 };
 
@@ -163,7 +159,11 @@ export class ConfigManager {
         ...DEFAULT_CONFIG.cache, 
         ...(userConfig.cache || {})
       },
-      models: userConfig.models || DEFAULT_CONFIG.models
+      models: userConfig.models || DEFAULT_CONFIG.models,
+      model_routing: {
+        ...DEFAULT_CONFIG.model_routing,
+        ...(userConfig.model_routing || {})
+      }
     };
   }
 
@@ -176,13 +176,12 @@ export class ConfigManager {
   }
 
   public getDefaultModel(): string {
-    // First, look for a model explicitly marked as default
-    const defaultModel = this.config.models.find(model => model.is_default);
-    if (defaultModel) {
-      return defaultModel.id;
+    // First, check the default_model_id in model_routing section
+    if (this.config.model_routing?.default_model_id) {
+      return this.config.model_routing.default_model_id;
     }
     
-    // Fall back to the configured default in defaults section
+    // Fall back to the configured default in defaults section (for backward compatibility)
     if (this.config.defaults.model) {
       return this.config.defaults.model;
     }
@@ -237,7 +236,7 @@ export class ConfigManager {
     const diffResult: TOML.JsonMap = {};
     
     // Handle non-array sections with just-diff
-    const sections = ['logging', 'server', 'defaults', 'rate_limits', 'cache'] as const;
+    const sections = ['logging', 'server', 'defaults', 'rate_limits', 'cache', 'model_routing'] as const;
     for (const section of sections) {
       const sectionDiff = diff(DEFAULT_CONFIG[section], this.config[section]);
       if (sectionDiff.length > 0) {
@@ -258,16 +257,10 @@ export class ConfigManager {
       id: '',
       display_name: '',
       provider: '',
-      is_default: false,
       config: {
         base_url: '',
         api_key: '',
-        model_name: '',
-        max_tokens: 4096,
-        temperature_range: [0, 2] as [number, number],
-        supports_streaming: true,
-        supports_tools: true,
-        supports_vision: false
+        model_name: ''
       }
     };
   }
