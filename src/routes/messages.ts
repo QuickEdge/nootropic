@@ -4,6 +4,7 @@ import { TranslationService } from '../services/translation';
 import { OpenAIService } from '../services/openai';
 import { createError } from '../middleware/error-handler';
 import { ConfigManager } from '../utils/config';
+import { ConversationLogger } from '../services/conversation-logger';
 
 const router = Router();
 
@@ -80,8 +81,17 @@ router.post('/', async (req, res, next) => {
         next(error);
       }
     } else {
+      const startTime = Date.now();
       const openAIResponse = await openAIService.createChatCompletion(openAIRequest);
       const anthropicResponse = TranslationService.openAIToAnthropic(openAIResponse, request.model);
+      const endTime = Date.now();
+      
+      // Log conversation if enabled
+      const logger = ConversationLogger.getInstance();
+      await logger.logConversation(request, anthropicResponse, {
+        requestId: anthropicResponse.id,
+        durationMs: endTime - startTime
+      });
       
       res.json(anthropicResponse);
     }

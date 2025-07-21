@@ -3,6 +3,16 @@ enabled = true
 level = "info"
 format = "json"
 
+[logging.conversation_logging]
+# Enable logging of full conversations to file
+enabled = true
+# File path for conversation logs (relative to working directory or absolute)
+file_path = "/tmp/conversations.log"
+# Include system messages in the logged conversations
+include_system_messages = true
+# Include timestamps in the logged conversations
+include_timestamps = true
+
 [server]
 port = 3000
 host = "localhost"
