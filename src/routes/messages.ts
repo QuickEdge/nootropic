@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { AnthropicRequest } from '../types';
+import { AnthropicRequest, OpenAIStreamResponse, AnthropicStreamResponse } from '../types';
 import { TranslationService } from '../services/translation';
 import { OpenAIService } from '../services/openai';
 import { createError } from '../middleware/error-handler';
@@ -91,10 +91,13 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-function translateStreamChunk(openAIChunk: any, originalModel: string): any {
-  const baseResponse = {
+function translateStreamChunk(openAIChunk: OpenAIStreamResponse, originalModel: string): AnthropicStreamResponse {
+  const baseResponse: AnthropicStreamResponse = {
     type: 'content_block_delta',
     index: 0,
+    delta: {
+      text: '',
+    },
   };
 
   if (openAIChunk.object === 'chat.completion.chunk') {
@@ -120,7 +123,8 @@ function translateStreamChunk(openAIChunk: any, originalModel: string): any {
 
     if (delta?.content) {
       return {
-        ...baseResponse,
+        type: 'content_block_delta',
+        index: 0,
         delta: {
           text: delta.content,
         },

@@ -1,10 +1,8 @@
-import inquirer, { Question, Answers } from 'inquirer';
+import inquirer from 'inquirer';
 import chalk from 'chalk';
-import * as fs from 'fs';
-import * as path from 'path';
-import TOML from '@iarna/toml';
 import { Config, ModelConfig, ConfigManager } from '../utils/config';
 import { prompts, PROVIDERS } from './prompts';
+import { validators } from './validators';
 
 export class InteractiveConfigEditor {
   private config: Config;
@@ -22,6 +20,7 @@ export class InteractiveConfigEditor {
     const configManager = ConfigManager.getInstance(true);
     this.config = configManager.getConfig();
     
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
         const { action } = await inquirer.prompt(prompts.mainMenu());
@@ -60,7 +59,6 @@ export class InteractiveConfigEditor {
     console.log(chalk.green('\n➕ Adding new model...\n'));
 
     const existingIds = this.config.models.map(m => m.id);
-    const existingProviders = Array.from(new Set(this.config.models.map(m => m.provider)));
 
     // Select provider
     const { provider } = await inquirer.prompt(prompts.providerSelection());
@@ -80,17 +78,28 @@ export class InteractiveConfigEditor {
       prompts.temperatureRange(),
       prompts.supportsStreaming(),
       prompts.supportsTools(),
-      prompts.supportsVision(provider === 'openai' || provider === 'openrouter')
+      prompts.supportsVision(provider === 'openai' || provider === 'openrouter'),
+      prompts.isDefault(this.config.models.length > 0)
     ].filter(Boolean));
 
     // Pricing configuration
     const pricingAnswers = await inquirer.prompt(prompts.pricing());
+
+    // If this model is set as default, unset any existing default
+    if (modelAnswers.is_default) {
+      this.config.models.forEach(model => {
+        if (model.is_default) {
+          model.is_default = false;
+        }
+      });
+    }
 
     // Create model configuration
     const newModel: ModelConfig = {
       id: modelAnswers.id,
       display_name: modelAnswers.display_name,
       provider: provider === 'custom' ? 'custom' : provider,
+      is_default: modelAnswers.is_default,
       config: {
         base_url: modelAnswers.base_url || providerConfig.baseUrl,
         api_key: modelAnswers.api_key || existingApiKey || '',
@@ -103,7 +112,7 @@ export class InteractiveConfigEditor {
       }
     };
 
-    if (pricingAnswers.has_pricing) {
+    if (pricingAnswers.has_pricing && pricingAnswers.input_per_1k && pricingAnswers.output_per_1k) {
       newModel.pricing = {
         input_per_1k: parseFloat(pricingAnswers.input_per_1k),
         output_per_1k: parseFloat(pricingAnswers.output_per_1k)
@@ -127,8 +136,6 @@ export class InteractiveConfigEditor {
 
     console.log(chalk.blue(`\n✏️  Editing model: ${model.display_name}\n`));
 
-    const providerConfig = PROVIDERS[model.provider] || PROVIDERS.custom;
-    const existingApiKey = model.config.api_key;
 
     const updates = await inquirer.prompt([
       {
@@ -142,7 +149,7 @@ export class InteractiveConfigEditor {
         type: 'input',
         name: 'base_url',
         message: '🔗 Base URL:',
-        default: model.config.base_url,
+        default: model.config?.base_url || '',
         validate: validators.isValidUrl
       },
       {
@@ -159,51 +166,67 @@ export class InteractiveConfigEditor {
         type: 'input',
         name: 'model_name',
         message: '🤖 Model name:',
-        default: model.config.model_name,
+        default: model.config?.model_name || '',
         validate: validators.isRequired
       },
       {
         type: 'input',
         name: 'max_tokens',
         message: '📊 Max tokens:',
-        default: model.config.max_tokens.toString(),
+        default: (model.config?.max_tokens || 4096).toString(),
         validate: validators.isValidNumber(1, 1000000)
       },
       {
         type: 'input',
         name: 'temperature_range',
         message: '🌡️  Temperature range (min, max):',
-        default: model.config.temperature_range.join(', '),
+        default: (model.config?.temperature_range || [0, 2]).join(', '),
         validate: validators.isValidTemperatureRange
       },
       {
         type: 'confirm',
         name: 'supports_streaming',
         message: '💬 Supports streaming?',
-        default: model.config.supports_streaming
+        default: model.config?.supports_streaming || true
       },
       {
         type: 'confirm',
         name: 'supports_tools',
         message: '🛠️  Supports tools/functions?',
-        default: model.config.supports_tools
+        default: model.config?.supports_tools || true
       },
       {
         type: 'confirm',
         name: 'supports_vision',
         message: '👁️  Supports vision?',
-        default: model.config.supports_vision
+        default: model.config?.supports_vision || false
+      },
+      {
+        type: 'confirm',
+        name: 'is_default',
+        message: '⭐ Set as default model?',
+        default: model.is_default || false
       }
     ]);
+
+    // If this model is set as default, unset any existing default
+    if (updates.is_default && !model.is_default) {
+      this.config.models.forEach((m, idx) => {
+        if (idx !== modelIndex && m.is_default) {
+          m.is_default = false;
+        }
+      });
+    }
 
     // Update model
     this.config.models[modelIndex] = {
       ...model,
       display_name: updates.display_name,
+      is_default: updates.is_default,
       config: {
         ...model.config,
         base_url: updates.base_url,
-        api_key: updates.api_key || model.config.api_key,
+        api_key: updates.api_key || model.config?.api_key || '',
         model_name: updates.model_name,
         max_tokens: parseInt(updates.max_tokens),
         temperature_range: updates.temperature_range.split(',').map((s: string) => parseFloat(s.trim())),
@@ -214,13 +237,10 @@ export class InteractiveConfigEditor {
     };
 
     console.log(chalk.green(`\n✅ Model "${updates.display_name}" updated successfully!\n`));
-    console.log(chalk.green(`\n✅ Model "${updates.display_name}" updated successfully!\n`));
   }
 
   private async removeModel(): Promise<void> {
-    const config = this.configManager.getConfig();
-    
-    if (config.models.length === 0) {
+    if (this.config.models.length === 0) {
       console.log(chalk.yellow('\n⚠️  No models to remove.\n'));
       return;
     }
@@ -309,6 +329,3 @@ export class InteractiveConfigEditor {
     return providerModel?.config.api_key;
   }
 }
-
-// For backward compatibility with the original validator import
-import { validators } from './validators';

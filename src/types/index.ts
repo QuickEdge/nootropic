@@ -1,3 +1,16 @@
+export interface OpenAILogprobs {
+  content: Array<{
+    token: string;
+    logprob: number;
+    bytes: number[] | null;
+    top_logprobs: Array<{
+      token: string;
+      logprob: number;
+      bytes: number[] | null;
+    }>;
+  }> | null;
+}
+
 export interface OpenAIChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | OpenAIContent[];
@@ -65,7 +78,7 @@ export interface OpenAIChoice {
   index: number;
   message: OpenAIChatMessage;
   finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter';
-  logprobs?: any;
+  logprobs?: OpenAILogprobs | null;
 }
 
 export interface OpenAIUsage {
@@ -91,7 +104,7 @@ export interface OpenAIStreamChoice {
     tool_calls?: OpenAIToolCall[];
   };
   finish_reason?: 'stop' | 'length' | 'tool_calls' | 'content_filter';
-  logprobs?: any;
+  logprobs?: OpenAILogprobs | null;
 }
 
 export interface AnthropicMessage {
@@ -109,7 +122,7 @@ export interface AnthropicContent {
   };
   id?: string;
   name?: string;
-  input?: any;
+  input?: Record<string, unknown>;
   tool_use_id?: string;
   content?: string;
   is_error?: boolean;
@@ -167,7 +180,7 @@ export interface AnthropicStreamResponse {
     id: string;
     type: 'message';
     role: 'assistant';
-    content: any[];
+    content: AnthropicContent[];
     model: string;
     usage: {
       input_tokens: number;
@@ -179,6 +192,6 @@ export interface AnthropicStreamResponse {
     text?: string;
     id?: string;
     name?: string;
-    input?: any;
+    input?: Record<string, unknown>;
   };
 }

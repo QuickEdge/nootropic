@@ -1,6 +1,7 @@
 import {
   OpenAIChatRequest,
   OpenAIChatMessage,
+  OpenAIContent,
   AnthropicRequest,
   AnthropicMessage,
   AnthropicContent,
@@ -9,6 +10,9 @@ import {
   AnthropicResponse,
   OpenAIChatResponse } from '../types';
 import { ConfigManager } from '../utils/config';
+
+type OpenAIToolChoice = 'none' | 'auto' | { type: 'function'; function: { name: string } };
+type AnthropicToolChoice = { type: 'auto' | 'any' | 'tool'; name?: string };
 
 export class TranslationService {
   static anthropicToOpenAI(request: AnthropicRequest): OpenAIChatRequest {
@@ -93,7 +97,7 @@ export class TranslationService {
     }));
   }
 
-  private static translateAnthropicToolChoice(toolChoice: any): any {
+  private static translateAnthropicToolChoice(toolChoice: AnthropicToolChoice | undefined): OpenAIToolChoice {
     if (!toolChoice) {
       return 'auto';
     }
@@ -103,7 +107,7 @@ export class TranslationService {
     if (toolChoice.type === 'any') {
       return 'auto';
     }
-    if (toolChoice.type === 'tool') {
+    if (toolChoice.type === 'tool' && toolChoice.name) {
       return {
         type: 'function',
         function: { name: toolChoice.name },
@@ -124,7 +128,6 @@ export class TranslationService {
       'claude-3-opus-20240229': 'gpt-4',
       'claude-3-sonnet-20240229': 'gpt-4-turbo',
       'claude-3-5-sonnet-20241022': 'gpt-4o',
-      'claude-3-haiku-20240307': 'gpt-4o-mini',
       'claude-3-haiku-20240307': 'gpt-3.5-turbo',
     };
 

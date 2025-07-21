@@ -9,6 +9,12 @@ export interface ProviderConfig {
   apiKeyPrefix?: string;
 }
 
+interface PricingAnswers {
+  has_pricing: boolean;
+  input_per_1k?: string;
+  output_per_1k?: string;
+}
+
 export const PROVIDERS: Record<string, ProviderConfig> = {
   openrouter: {
     name: 'OpenRouter',
@@ -151,6 +157,13 @@ export const prompts = {
     default: defaultValue !== undefined ? defaultValue : getModelDefaults().config.supports_vision
   }),
 
+  isDefault: (hasExistingModels: boolean, defaultValue?: boolean): ConfirmQuestion => ({
+    type: 'confirm',
+    name: 'is_default',
+    message: '⭐ Set as default model?',
+    default: defaultValue !== undefined ? defaultValue : !hasExistingModels
+  }),
+
   pricing: () => [{
     type: 'confirm',
     name: 'has_pricing',
@@ -161,14 +174,14 @@ export const prompts = {
     name: 'input_per_1k',
     message: '💵 Input price per 1K tokens (USD):',
     validate: validators.isValidPrice,
-    when: (answers: any) => answers.has_pricing,
+    when: (answers: PricingAnswers) => answers.has_pricing,
     default: '0.003'
   }, {
     type: 'input',
     name: 'output_per_1k',
     message: '💵 Output price per 1K tokens (USD):',
     validate: validators.isValidPrice,
-    when: (answers: any) => answers.has_pricing,
+    when: (answers: PricingAnswers) => answers.has_pricing,
     default: '0.015'
   }],
 

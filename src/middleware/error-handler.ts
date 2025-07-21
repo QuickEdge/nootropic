@@ -8,8 +8,14 @@ export interface ApiError extends Error {
 export const errorHandler = (
   error: ApiError,
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction
 ) => {
+  // If response was already sent, delegate to default Express error handler
+  if (res.headersSent) {
+    return next(error);
+  }
+  
   const statusCode = error.statusCode || 500;
   const type = error.type || 'server_error';
   

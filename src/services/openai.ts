@@ -1,6 +1,7 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 import { OpenAIChatRequest, OpenAIChatResponse } from '../types';
 import { ModelConfig } from '../utils/config';
+import { Readable } from 'stream';
 
 export class OpenAIService {
   private client: AxiosInstance;
@@ -27,15 +28,19 @@ export class OpenAIService {
     try {
       const response = await this.client.post('/v1/chat/completions', request);
       return response.data;
-    } catch (error: any) {
-      if (error.response) {
-        throw new Error(`OpenAI API error: ${error.response.data?.error?.message || error.response.statusText}`);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const axiosError = error as AxiosError<{ error?: { message?: string } }>;
+        if (axiosError.response) {
+          throw new Error(`OpenAI API error: ${axiosError.response.data?.error?.message || axiosError.response.statusText}`);
+        }
+        throw new Error(`Failed to connect to OpenAI API: ${axiosError.message}`);
       }
-      throw new Error(`Failed to connect to OpenAI API: ${error.message}`);
+      throw error;
     }
   }
 
-  async createChatCompletionStream(request: OpenAIChatRequest): Promise<any> {
+  async createChatCompletionStream(request: OpenAIChatRequest): Promise<Readable> {
     try {
       const response = await this.client.post('/v1/chat/completions', {
         ...request,
@@ -44,11 +49,15 @@ export class OpenAIService {
         responseType: 'stream',
       });
       return response.data;
-    } catch (error: any) {
-      if (error.response) {
-        throw new Error(`OpenAI API error: ${error.response.data?.error?.message || error.response.statusText}`);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const axiosError = error as AxiosError<{ error?: { message?: string } }>;
+        if (axiosError.response) {
+          throw new Error(`OpenAI API error: ${axiosError.response.data?.error?.message || axiosError.response.statusText}`);
+        }
+        throw new Error(`Failed to connect to OpenAI API: ${axiosError.message}`);
       }
-      throw new Error(`Failed to connect to OpenAI API: ${error.message}`);
+      throw error;
     }
   }
 }

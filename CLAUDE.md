@@ -176,3 +176,6 @@ DEBUG=anthropic-proxy:request,anthropic-proxy:response npm run dev
 - Implement proper request validation
 - Use HTTPS in production
 - Consider implementing request signing for additional security
+
+## Development Best Practices
+- When finishing a task, run the linter and fix any warnings before considering it complete

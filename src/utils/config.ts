@@ -7,6 +7,7 @@ export interface ModelConfig {
   id: string;
   display_name: string;
   provider: string;
+  is_default?: boolean;
   config: {
     base_url: string;
     api_key: string;
@@ -175,7 +176,19 @@ export class ConfigManager {
   }
 
   public getDefaultModel(): string {
-    return this.config.defaults.model;
+    // First, look for a model explicitly marked as default
+    const defaultModel = this.config.models.find(model => model.is_default);
+    if (defaultModel) {
+      return defaultModel.id;
+    }
+    
+    // Fall back to the configured default in defaults section
+    if (this.config.defaults.model) {
+      return this.config.defaults.model;
+    }
+    
+    // If no default is set anywhere, return the first model's id
+    return this.config.models.length > 0 ? this.config.models[0].id : '';
   }
 
   public createConfigDirectory(): void {
@@ -191,7 +204,7 @@ export class ConfigManager {
       ...DEFAULT_CONFIG,
       models: [] // Ensure models array is empty
     };
-    fs.writeFileSync(this.configPath, TOML.stringify(emptyConfig as any));
+    fs.writeFileSync(this.configPath, TOML.stringify(emptyConfig as TOML.JsonMap));
     console.log(`✅ Empty configuration created at: ${this.configPath}`);
   }
 
@@ -210,7 +223,7 @@ export class ConfigManager {
       // Create a diff object with only non-default values
       const diff = this.createConfigDiff();
       
-      fs.writeFileSync(this.configPath, TOML.stringify(diff));
+      fs.writeFileSync(this.configPath, TOML.stringify(diff as TOML.JsonMap));
       console.log(`✅ Configuration saved to: ${this.configPath}`);
     } catch (error) {
       console.error(`❌ Failed to save configuration:`, error);
@@ -218,10 +231,10 @@ export class ConfigManager {
     }
   }
   
-  private createConfigDiff(): any {
+  private createConfigDiff(): TOML.JsonMap {
     const { diff } = require('just-diff');
     
-    const diffResult: any = {};
+    const diffResult: TOML.JsonMap = {};
     
     // Handle non-array sections with just-diff
     const sections = ['logging', 'server', 'defaults', 'rate_limits', 'cache'] as const;
@@ -232,21 +245,20 @@ export class ConfigManager {
       }
     }
     
-    // Handle models with custom diff for arrays
+    // Handle models - just include all models as they differ from empty default
     if (this.config.models.length > 0) {
-      diffResult.models = this.config.models.map(model => {
-        return this.getObjectDiff(this.getModelDefaults(), model);
-      });
+      diffResult.models = this.config.models as unknown as TOML.AnyJson;
     }
     
     return diffResult;
   }
   
-  public getModelDefaults(): any {
+  public getModelDefaults(): ModelConfig {
     return {
       id: '',
       display_name: '',
       provider: '',
+      is_default: false,
       config: {
         base_url: '',
         api_key: '',
@@ -260,8 +272,8 @@ export class ConfigManager {
     };
   }
   
-  private getObjectDiff<T extends Record<string, any>>(defaultObj: T, currentObj: T): Partial<T> {
-    const result: any = {};
+  private getObjectDiff<T extends Record<string, unknown>>(defaultObj: T, currentObj: T): Partial<T> {
+    const result: Partial<T> = {};
 
     for (const key in currentObj) {
       const currentVal = currentObj[key];
@@ -269,9 +281,9 @@ export class ConfigManager {
 
       if (typeof currentVal === 'object' && currentVal !== null && 
           typeof defaultVal === 'object' && defaultVal !== null) {
-        const nestedDiff = this.getObjectDiff(defaultVal, currentVal);
+        const nestedDiff = this.getObjectDiff(defaultVal as Record<string, unknown>, currentVal as Record<string, unknown>);
         if (Object.keys(nestedDiff).length > 0) {
-          result[key] = nestedDiff;
+          result[key] = nestedDiff as T[Extract<keyof T, string>];
         }
       } else if (currentVal !== defaultVal) {
         result[key] = currentVal;
