@@ -241,7 +241,7 @@ export class ConfigManager {
     return diffResult;
   }
   
-  private getModelDefaults(): any {
+  public getModelDefaults(): any {
     return {
       id: '',
       display_name: '',

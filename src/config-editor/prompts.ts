@@ -1,5 +1,6 @@
 import { validators } from './validators';
 import { ListQuestion, InputQuestion, PasswordQuestion, ConfirmQuestion } from 'inquirer';
+import { ConfigManager } from '../utils/config';
 
 export interface ProviderConfig {
   name: string;
@@ -32,6 +33,11 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     baseUrl: 'http://localhost:8080',
     modelName: 'llama-3.1-8b'
   }
+};
+
+const getModelDefaults = () => {
+  const configManager = ConfigManager.getInstance(true);
+  return configManager.getModelDefaults();
 };
 
 export const prompts = {
@@ -108,41 +114,41 @@ export const prompts = {
     validate: validators.isRequired
   }),
 
-  maxTokens: (defaultTokens: number = 4096): InputQuestion => ({
+  maxTokens: (defaultTokens?: number): InputQuestion => ({
     type: 'input',
     name: 'max_tokens',
-    message: `📊 Max tokens (default: ${defaultTokens}):`,
-    default: defaultTokens.toString(),
+    message: `📊 Max tokens (default: ${defaultTokens || getModelDefaults().config.max_tokens}):`,
+    default: (defaultTokens || getModelDefaults().config.max_tokens).toString(),
     validate: validators.isValidNumber(1, 1000000)
   }),
 
-  temperatureRange: (defaultRange: [number, number] = [0, 2]): InputQuestion => ({
+  temperatureRange: (defaultRange?: [number, number]): InputQuestion => ({
     type: 'input',
     name: 'temperature_range',
-    message: `🌡️  Temperature range (min, max - default: ${defaultRange.join(', ')}):`,
-    default: defaultRange.join(', '),
+    message: `🌡️  Temperature range (min, max - default: ${(defaultRange || getModelDefaults().config.temperature_range).join(', ')}):`,
+    default: (defaultRange || getModelDefaults().config.temperature_range).join(', '),
     validate: validators.isValidTemperatureRange
   }),
 
-  supportsStreaming: (defaultValue: boolean = true): ConfirmQuestion => ({
+  supportsStreaming: (defaultValue?: boolean): ConfirmQuestion => ({
     type: 'confirm',
     name: 'supports_streaming',
     message: '💬 Supports streaming?',
-    default: defaultValue
+    default: defaultValue !== undefined ? defaultValue : getModelDefaults().config.supports_streaming
   }),
 
-  supportsTools: (defaultValue: boolean = true): ConfirmQuestion => ({
+  supportsTools: (defaultValue?: boolean): ConfirmQuestion => ({
     type: 'confirm',
     name: 'supports_tools',
     message: '🛠️  Supports tools/functions?',
-    default: defaultValue
+    default: defaultValue !== undefined ? defaultValue : getModelDefaults().config.supports_tools
   }),
 
-  supportsVision: (defaultValue: boolean = false): ConfirmQuestion => ({
+  supportsVision: (defaultValue?: boolean): ConfirmQuestion => ({
     type: 'confirm',
     name: 'supports_vision',
     message: '👁️  Supports vision (image input)?',
-    default: defaultValue
+    default: defaultValue !== undefined ? defaultValue : getModelDefaults().config.supports_vision
   }),
 
   pricing: () => [{
