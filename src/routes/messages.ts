@@ -3,23 +3,18 @@ import { AnthropicRequest, OpenAIStreamResponse, AnthropicStreamResponse } from 
 import { TranslationService } from '../services/translation';
 import { OpenAIService } from '../services/openai';
 import { createError } from '../middleware/error-handler';
+import { validateAnthropicRequest } from '../middleware/request-validation';
 import { ConfigManager } from '../utils/config';
 import { ConversationLogger } from '../services/conversation-logger';
+import { randomBytes } from 'crypto';
 
 const router = Router();
 
-router.post('/', async (req, res, next) => {
+router.post('/', validateAnthropicRequest, async (req, res, next) => {
   try {
     const request: AnthropicRequest = req.body;
     
-    if (!request.messages || !Array.isArray(request.messages)) {
-      throw createError('Messages is required and must be an array', 400, 'invalid_request_error');
-    }
-
-    if (!request.model) {
-      throw createError('Model is required', 400, 'invalid_request_error');
-    }
-
+    // Set default max_tokens if not provided (validation middleware ensures it's valid if present)
     if (!request.max_tokens) {
       const config = ConfigManager.getInstance();
       request.max_tokens = config.getConfig().defaults.max_tokens;
@@ -40,12 +35,27 @@ router.post('/', async (req, res, next) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
+      // Set up streaming session for logging
+      const sessionId = randomBytes(16).toString('hex');
+      const logger = ConversationLogger.getInstance();
+      console.log(`Starting streaming session ${sessionId} for model ${request.model}`);
+      logger.startStreamingSession(request, sessionId);
+
       try {
         const stream = await openAIService.createChatCompletionStream(openAIRequest);
+        let streamBuffer = '';
+        let buffer = '';
         
         stream.on('data', (chunk: Buffer) => {
-          const lines = chunk.toString().split('\n');
+          const chunkStr = chunk.toString();
+          streamBuffer += chunkStr;  // For logging
+          buffer += chunkStr;        // For parsing
           
+          // Split on newlines and keep incomplete line in buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';  // Keep incomplete line
+          
+          // Process only complete lines
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
@@ -55,29 +65,62 @@ router.post('/', async (req, res, next) => {
                 continue;
               }
               
-              try {
-                const parsed = JSON.parse(data);
-                const anthropicChunk = translateStreamChunk(parsed, request.model);
-                res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
-              } catch (error) {
-                console.error('Error parsing stream chunk:', error);
+              if (data.trim()) {
+                try {
+                  const parsed = JSON.parse(data);
+                  const anthropicChunk = translateStreamChunk(parsed, request.model);
+                  res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
+                } catch (error) {
+                  console.error('Error parsing complete line:', error);
+                  console.error('Line was:', line);
+                }
               }
             }
           }
         });
 
         stream.on('end', () => {
+          // Process complete buffer for logging
+          try {
+            const lines = streamBuffer.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ') && line.slice(6) !== '[DONE]') {
+                try {
+                  const parsed = JSON.parse(line.slice(6));
+                  const anthropicChunk = translateStreamChunk(parsed, request.model);
+                  logger.addStreamChunk(sessionId, anthropicChunk);
+                } catch (error) {
+                  // Individual line parse error - continue processing other lines
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error processing stream buffer for logging:', error);
+          }
+          
+          // Finish logging session
+          console.log(`Finishing streaming session ${sessionId} with ${streamBuffer.length} bytes buffered`);
+          logger.finishStreamingSession(sessionId).catch(error => {
+            console.error('Error finishing streaming session log:', error);
+          });
+          
           res.write('data: [DONE]\n\n');
           res.end();
         });
 
         stream.on('error', (error: Error) => {
           console.error('Stream error:', error);
+          
+          // Clean up logging session on error
+          logger.cleanupStreamingSession(sessionId);
+          
           res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
           res.end();
         });
 
       } catch (error) {
+        // Clean up logging session on error
+        logger.cleanupStreamingSession(sessionId);
         next(error);
       }
     } else {

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { AnthropicRequest, AnthropicResponse } from '../types';
+import { AnthropicRequest, AnthropicResponse, AnthropicStreamResponse } from '../types';
 import { ConfigManager } from '../utils/config';
 
 export interface ConversationLogEntry {
@@ -10,16 +10,27 @@ export interface ConversationLogEntry {
   request: AnthropicRequest;
   response: AnthropicResponse;
   duration_ms?: number;
+  is_stream?: boolean;
+}
+
+interface StreamingSession {
+  request: AnthropicRequest;
+  startTime: number;
+  requestId?: string;
+  accumulatedContent: string;
+  stopReason?: string;
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+  };
 }
 
 export class ConversationLogger {
   private static instance: ConversationLogger;
   private config = ConfigManager.getInstance().getConfig();
+  private streamingSessions: Map<string, StreamingSession> = new Map();
 
   private constructor() {}
-
-  // Note: Streaming responses are not currently logged as they don't have a single complete response object.
-  // This could be enhanced in the future to accumulate streaming chunks into a complete response.
 
   static getInstance(): ConversationLogger {
     if (!ConversationLogger.instance) {
@@ -98,5 +109,114 @@ export class ConversationLogger {
 
   public isEnabled(): boolean {
     return this.config.logging.conversation_logging.enabled;
+  }
+
+  public startStreamingSession(request: AnthropicRequest, sessionId: string): void {
+    if (!this.config.logging.conversation_logging.enabled) {
+      return;
+    }
+
+    this.streamingSessions.set(sessionId, {
+      request: this.sanitizeRequest(request),
+      startTime: Date.now(),
+      accumulatedContent: '',
+      stopReason: undefined,
+      usage: undefined
+    });
+  }
+
+  public addStreamChunk(sessionId: string, chunk: AnthropicStreamResponse): void {
+    if (!this.config.logging.conversation_logging.enabled) {
+      return;
+    }
+
+    const session = this.streamingSessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+
+    // Handle different chunk types
+    switch (chunk.type) {
+      case 'message_start':
+        if (chunk.message?.id) {
+          session.requestId = chunk.message.id;
+        }
+        if (chunk.message?.usage) {
+          session.usage = {
+            input_tokens: chunk.message.usage.input_tokens,
+            output_tokens: chunk.message.usage.output_tokens
+          };
+        }
+        break;
+      
+      case 'content_block_delta':
+        if (chunk.delta?.text) {
+          session.accumulatedContent += chunk.delta.text;
+        }
+        break;
+
+      case 'message_delta':
+        if (chunk.delta?.stop_reason) {
+          session.stopReason = chunk.delta.stop_reason;
+        }
+        if (chunk.delta?.usage?.output_tokens) {
+          if (session.usage) {
+            session.usage.output_tokens = chunk.delta.usage.output_tokens;
+          }
+        }
+        break;
+    }
+  }
+
+  public async finishStreamingSession(sessionId: string): Promise<void> {
+    if (!this.config.logging.conversation_logging.enabled) {
+      return;
+    }
+
+    const session = this.streamingSessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+
+    try {
+      // Construct a complete AnthropicResponse from the accumulated stream data
+      const response: AnthropicResponse = {
+        id: session.requestId || `stream_${sessionId}`,
+        type: 'message',
+        role: 'assistant',
+        content: [{
+          type: 'text',
+          text: session.accumulatedContent
+        }],
+        model: session.request.model,
+        stop_reason: (session.stopReason as 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use') || 'end_turn',
+        usage: session.usage || {
+          input_tokens: 0,
+          output_tokens: 0
+        }
+      };
+
+      // Log the complete conversation
+      const logEntry: ConversationLogEntry = {
+        timestamp: new Date().toISOString(),
+        request_id: session.requestId,
+        model: session.request.model,
+        request: session.request,
+        response: response,
+        duration_ms: Date.now() - session.startTime,
+        is_stream: true
+      };
+
+      await this.writeToFile(logEntry);
+    } catch (error) {
+      console.error('Failed to log streaming conversation:', error);
+    } finally {
+      // Clean up the session
+      this.streamingSessions.delete(sessionId);
+    }
+  }
+
+  public cleanupStreamingSession(sessionId: string): void {
+    this.streamingSessions.delete(sessionId);
   }
 }

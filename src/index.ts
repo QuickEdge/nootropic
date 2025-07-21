@@ -27,7 +27,9 @@ if (config.server.cors.enabled) {
     origin: config.server.cors.origins
   }));
 }
-app.use(express.json());
+app.use(express.json({ 
+  limit: '50mb' // Handle large requests like claude-code-router (52MB)
+}));
 
 app.get('/', (req, res) => {
   res.json({ message: 'OpenAI Anthropic Proxy Server', version: '1.0.0' });
