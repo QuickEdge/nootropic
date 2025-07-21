@@ -1,11 +1,6 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import {
-  AnthropicRequest,
-  AnthropicMessage,
-  AnthropicContent,
-  AnthropicTool
-} from '../types';
+import { AnthropicRequest, AnthropicTool } from '../types';
 import { ModelConfig } from '../utils/config';
 
 type AnthropicToolChoice = { type: 'auto' | 'any' | 'tool'; name?: string };
@@ -54,7 +49,7 @@ export class TranslationService {
     }
   }
 
-  private static translateSystemContent(system: string | AnthropicContent[]): string {
+  private static translateSystemContent(system: string | any[]): string {
     if (typeof system === 'string') {
       return system;
     }
@@ -68,7 +63,7 @@ export class TranslationService {
     return textParts;
   }
 
-  private static translateAnthropicMessage(message: AnthropicMessage): OpenAI.Chat.Completions.ChatCompletionMessageParam {
+  private static translateAnthropicMessage(message: any): OpenAI.Chat.Completions.ChatCompletionMessageParam {
     if (typeof message.content === 'string') {
       if (message.role === 'assistant') {
         return {
@@ -85,7 +80,7 @@ export class TranslationService {
 
     // Handle complex content with text and images
     const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = message.content
-      .map(item => {
+      .map((item: any) => {
         // Note: cache_control is intentionally filtered out as OpenAI-compatible APIs don't support it
         if (item.type === 'text') {
           return {

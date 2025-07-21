@@ -1,4 +1,8 @@
-// OpenAI types are now imported from the official SDK
+// Import official Anthropic SDK types
+import Anthropic from '@anthropic-ai/sdk';
+
+// For our proxy, we use simplified types that are compatible with the proxy's requirements
+// These will be gradually migrated to SDK types where appropriate
 
 export interface AnthropicMessage {
   role: 'user' | 'assistant';
