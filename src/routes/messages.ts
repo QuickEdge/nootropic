@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { AnthropicRequest, OpenAIStreamResponse, AnthropicStreamResponse } from '../types';
+import OpenAI from 'openai';
+import { AnthropicRequest, AnthropicStreamResponse, AnthropicResponse } from '../types';
 import { TranslationService } from '../services/translation';
 import { OpenAIService } from '../services/openai';
 import { createError } from '../middleware/error-handler';
@@ -42,96 +43,73 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
       logger.startStreamingSession(request, sessionId);
 
       try {
-        const stream = await openAIService.createChatCompletionStream(openAIRequest);
-        let streamBuffer = '';
-        let buffer = '';
+        const streamRequest = openAIRequest as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+        const stream = await openAIService.createChatCompletionStream(streamRequest);
         
-        stream.on('data', (chunk: Buffer) => {
-          const chunkStr = chunk.toString();
-          streamBuffer += chunkStr;  // For logging
-          buffer += chunkStr;        // For parsing
-          
-          // Split on newlines and keep incomplete line in buffer
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';  // Keep incomplete line
-          
-          // Process only complete lines
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              
-              if (data === '[DONE]') {
-                res.write(`data: ${data}\n\n`);
-                continue;
-              }
-              
-              if (data.trim()) {
-                try {
-                  const parsed = JSON.parse(data);
-                  const anthropicChunk = translateStreamChunk(parsed, request.model);
-                  res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
-                } catch (error) {
-                  console.error('Error parsing complete line:', error);
-                  console.error('Line was:', line);
-                }
-              }
-            }
-          }
-        });
-
-        stream.on('end', () => {
-          // Process complete buffer for logging
+        for await (const chunk of stream) {
           try {
-            const lines = streamBuffer.split('\n');
-            for (const line of lines) {
-              if (line.startsWith('data: ') && line.slice(6) !== '[DONE]') {
-                try {
-                  const parsed = JSON.parse(line.slice(6));
-                  const anthropicChunk = translateStreamChunk(parsed, request.model);
-                  logger.addStreamChunk(sessionId, anthropicChunk);
-                } catch (error) {
-                  // Individual line parse error - continue processing other lines
-                }
-              }
-            }
+            const anthropicChunk = translateStreamChunk(chunk, request.model);
+            
+            // Add chunk to logger in real-time
+            logger.addStreamChunk(sessionId, anthropicChunk);
+            
+            res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
           } catch (error) {
-            console.error('Error processing stream buffer for logging:', error);
+            console.error('Error translating stream chunk:', error);
+            console.error('Chunk was:', chunk);
           }
-          
-          // Finish logging session
-          console.log(`Finishing streaming session ${sessionId} with ${streamBuffer.length} bytes buffered`);
-          logger.finishStreamingSession(sessionId).catch(error => {
-            console.error('Error finishing streaming session log:', error);
-          });
-          
-          res.write('data: [DONE]\n\n');
-          res.end();
-        });
+        }
 
-        stream.on('error', (error: Error) => {
-          console.error('Stream error:', error);
-          
-          // Clean up logging session on error
-          logger.cleanupStreamingSession(sessionId);
-          
-          res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
-          res.end();
+        // Finish logging session
+        console.log(`Finishing streaming session ${sessionId}`);
+        logger.finishStreamingSession(sessionId).catch(error => {
+          console.error('Error finishing streaming session log:', error);
         });
+        
+        res.write('data: [DONE]\n\n');
+        res.end();
 
       } catch (error) {
         // Clean up logging session on error
         logger.cleanupStreamingSession(sessionId);
-        next(error);
+        
+        if (error instanceof OpenAI.APIError) {
+          console.error('OpenAI API Stream Error:', error.message);
+          res.write(`data: ${JSON.stringify({ error: `OpenAI API error: ${error.message}` })}\n\n`);
+        } else {
+          console.error('Stream error:', error);
+          res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
+        }
+        res.end();
       }
     } else {
       const startTime = Date.now();
-      const openAIResponse = await openAIService.createChatCompletion(openAIRequest);
+      const nonStreamRequest = openAIRequest as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+      const openAIResponse = await openAIService.createChatCompletion(nonStreamRequest);
       const anthropicResponse = TranslationService.openAIToAnthropic(openAIResponse, request.model);
       const endTime = Date.now();
       
       // Log conversation if enabled
       const logger = ConversationLogger.getInstance();
-      await logger.logConversation(request, anthropicResponse, {
+      // Convert Anthropic SDK message to our custom type for logging
+      const logResponse = {
+        ...anthropicResponse,
+        stop_reason: anthropicResponse.stop_reason || 'end_turn',
+        content: anthropicResponse.content.map(block => {
+          if (block.type === 'text') {
+            return { type: 'text' as const, text: block.text };
+          } else if (block.type === 'tool_use') {
+            return { 
+              type: 'tool_use' as const, 
+              id: block.id, 
+              name: block.name, 
+              input: block.input as Record<string, unknown>
+            };
+          }
+          return { type: 'text' as const, text: '' };
+        })
+      } as AnthropicResponse;
+      await logger.logConversation(request, logResponse, {
         requestId: anthropicResponse.id,
         durationMs: endTime - startTime
       });
@@ -144,7 +122,10 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
   }
 });
 
-function translateStreamChunk(openAIChunk: OpenAIStreamResponse, originalModel: string): AnthropicStreamResponse {
+function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletionChunk, originalModel: string): AnthropicStreamResponse {
+  // Log the raw OpenAI chunk for debugging
+  console.log('🔄 Raw OpenAI chunk:', JSON.stringify(openAIChunk, null, 2));
+
   const baseResponse: AnthropicStreamResponse = {
     type: 'content_block_delta',
     index: 0,
@@ -153,12 +134,25 @@ function translateStreamChunk(openAIChunk: OpenAIStreamResponse, originalModel: 
     },
   };
 
+  let translatedResponse = baseResponse;
+
   if (openAIChunk.object === 'chat.completion.chunk') {
     const choice = openAIChunk.choices?.[0];
     const delta = choice?.delta;
 
-    if (delta?.role) {
-      return {
+    // Handle usage information chunks (final chunks from OpenAI with usage data)
+    if (openAIChunk.usage) {
+      translatedResponse = {
+        type: 'message_delta',
+        delta: {
+          usage: {
+            input_tokens: openAIChunk.usage.prompt_tokens,
+            output_tokens: openAIChunk.usage.completion_tokens,
+          },
+        },
+      };
+    } else if (delta?.role) {
+      translatedResponse = {
         type: 'message_start',
         message: {
           id: openAIChunk.id,
@@ -172,20 +166,18 @@ function translateStreamChunk(openAIChunk: OpenAIStreamResponse, originalModel: 
           },
         },
       };
-    }
-
-    if (delta?.content) {
-      return {
+    } else if (delta?.content) {
+      // For Anthropic streaming, we need content_block_start before content_block_delta
+      // But since OpenAI doesn't send separate start events, we'll just use delta
+      translatedResponse = {
         type: 'content_block_delta',
         index: 0,
         delta: {
           text: delta.content,
         },
       };
-    }
-
-    if (choice?.finish_reason) {
-      return {
+    } else if (choice?.finish_reason) {
+      translatedResponse = {
         type: 'message_delta',
         delta: {
           stop_reason: translateFinishReason(choice.finish_reason),
@@ -194,7 +186,10 @@ function translateStreamChunk(openAIChunk: OpenAIStreamResponse, originalModel: 
     }
   }
 
-  return baseResponse;
+  // Log the translated Anthropic chunk for debugging
+  console.log('✅ Translated Anthropic chunk:', JSON.stringify(translatedResponse, null, 2));
+
+  return translatedResponse;
 }
 
 function translateFinishReason(reason: string): string {

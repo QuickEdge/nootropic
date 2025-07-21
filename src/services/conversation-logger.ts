@@ -132,39 +132,52 @@ export class ConversationLogger {
 
     const session = this.streamingSessions.get(sessionId);
     if (!session) {
+      console.log(`⚠️ No streaming session found for ${sessionId}`);
       return;
     }
+
+    console.log(`📝 Processing chunk for session ${sessionId}:`, chunk.type, chunk.delta?.text ? `"${chunk.delta.text}"` : 'no text');
 
     // Handle different chunk types
     switch (chunk.type) {
       case 'message_start':
         if (chunk.message?.id) {
           session.requestId = chunk.message.id;
+          console.log(`🆔 Set request ID: ${session.requestId}`);
         }
         if (chunk.message?.usage) {
           session.usage = {
             input_tokens: chunk.message.usage.input_tokens,
             output_tokens: chunk.message.usage.output_tokens
           };
+          console.log(`📊 Initial usage: ${session.usage.input_tokens} input, ${session.usage.output_tokens} output`);
         }
         break;
       
       case 'content_block_delta':
         if (chunk.delta?.text) {
           session.accumulatedContent += chunk.delta.text;
+          console.log(`📝 Accumulated content length: ${session.accumulatedContent.length}`);
+        } else {
+          console.log(`⚠️ content_block_delta chunk has no text`);
         }
         break;
 
       case 'message_delta':
         if (chunk.delta?.stop_reason) {
           session.stopReason = chunk.delta.stop_reason;
+          console.log(`🛑 Stop reason: ${session.stopReason}`);
         }
         if (chunk.delta?.usage?.output_tokens) {
           if (session.usage) {
             session.usage.output_tokens = chunk.delta.usage.output_tokens;
+            console.log(`📊 Updated output tokens: ${session.usage.output_tokens}`);
           }
         }
         break;
+        
+      default:
+        console.log(`❓ Unknown chunk type: ${chunk.type}`);
     }
   }
 
