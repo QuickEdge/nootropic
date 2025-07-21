@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
-import { AnthropicRequest, AnthropicStreamResponse, AnthropicResponse } from '../types';
+import Anthropic from '@anthropic-ai/sdk';
+import { AnthropicRequest, AnthropicStreamResponse } from '../types';
 import { TranslationService } from '../services/translation';
 import { OpenAIService } from '../services/openai';
 import { createError } from '../middleware/error-handler';
@@ -91,25 +92,7 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
       
       // Log conversation if enabled
       const logger = ConversationLogger.getInstance();
-      // Convert Anthropic SDK message to our custom type for logging
-      const logResponse = {
-        ...anthropicResponse,
-        stop_reason: anthropicResponse.stop_reason || 'end_turn',
-        content: anthropicResponse.content.map(block => {
-          if (block.type === 'text') {
-            return { type: 'text' as const, text: block.text };
-          } else if (block.type === 'tool_use') {
-            return { 
-              type: 'tool_use' as const, 
-              id: block.id, 
-              name: block.name, 
-              input: block.input as Record<string, unknown>
-            };
-          }
-          return { type: 'text' as const, text: '' };
-        })
-      } as AnthropicResponse;
-      await logger.logConversation(request, logResponse, {
+      await logger.logConversation(request, anthropicResponse, {
         requestId: anthropicResponse.id,
         durationMs: endTime - startTime
       });
@@ -126,15 +109,7 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
   // Log the raw OpenAI chunk for debugging
   console.log('🔄 Raw OpenAI chunk:', JSON.stringify(openAIChunk, null, 2));
 
-  const baseResponse: AnthropicStreamResponse = {
-    type: 'content_block_delta',
-    index: 0,
-    delta: {
-      text: '',
-    },
-  };
-
-  let translatedResponse = baseResponse;
+  let translatedResponse: AnthropicStreamResponse;
 
   if (openAIChunk.object === 'chat.completion.chunk') {
     const choice = openAIChunk.choices?.[0];
@@ -144,13 +119,12 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
     if (openAIChunk.usage) {
       translatedResponse = {
         type: 'message_delta',
-        delta: {
-          usage: {
-            input_tokens: openAIChunk.usage.prompt_tokens,
-            output_tokens: openAIChunk.usage.completion_tokens,
-          },
+        delta: {},
+        usage: {
+          input_tokens: openAIChunk.usage.prompt_tokens,
+          output_tokens: openAIChunk.usage.completion_tokens,
         },
-      };
+      } as Anthropic.Messages.MessageDeltaEvent;
     } else if (delta?.role && !delta?.tool_calls) {
       // Only treat as message_start if there's a role but no tool calls
       translatedResponse = {
@@ -161,12 +135,19 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
           role: 'assistant',
           content: [],
           model: originalModel,
+          stop_reason: null,
+          stop_sequence: null,
           usage: {
             input_tokens: 0,
             output_tokens: 0,
+            // Anthropic-specific fields not available in OpenAI
+            cache_creation_input_tokens: null,
+            cache_read_input_tokens: null,
+            server_tool_use: null,
+            service_tier: 'standard' as Anthropic.Messages.Usage['service_tier']
           },
         },
-      };
+      } as Anthropic.Messages.MessageStartEvent;
     } else if (delta?.tool_calls) {
       // Handle tool calls - translate to tool_use content block
       const toolCall = delta.tool_calls[0]; // OpenAI sends one tool call per chunk
@@ -182,7 +163,7 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
             name: toolCall.function.name,
             input: {}
           }
-        };
+        } as Anthropic.Messages.ContentBlockStartEvent;
       } else if (toolCall?.function?.arguments) {
         // This is a delta with tool arguments (could be first chunk with just arguments)
         // If this is the first chunk and we have arguments but no name, treat as content_block_start
@@ -198,15 +179,16 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
               name: toolCall.function.arguments, // In some APIs, arguments might contain the tool name
               input: {}
             }
-          };
+          } as Anthropic.Messages.ContentBlockStartEvent;
         } else {
           translatedResponse = {
             type: 'content_block_delta',
             index: toolCall.index || 0,
             delta: {
+              type: 'input_json_delta',
               partial_json: toolCall.function.arguments
             }
-          };
+          } as Anthropic.Messages.ContentBlockDeltaEvent;
         }
       } else if (toolCall?.function) {
         // This is the start of a tool call but function name might come in a later chunk
@@ -220,7 +202,17 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
             name: 'pending', // Will be updated in subsequent chunks
             input: {}
           }
-        };
+        } as Anthropic.Messages.ContentBlockStartEvent;
+      } else {
+        // Default tool call handling
+        translatedResponse = {
+          type: 'content_block_delta',
+          index: toolCall?.index || 0,
+          delta: {
+            type: 'text_delta',
+            text: '',
+          },
+        } as Anthropic.Messages.ContentBlockDeltaEvent;
       }
     } else if (delta?.content) {
       // Regular text content
@@ -228,17 +220,38 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
         type: 'content_block_delta',
         index: 0,
         delta: {
+          type: 'text_delta',
           text: delta.content,
         },
-      };
+      } as Anthropic.Messages.ContentBlockDeltaEvent;
     } else if (choice?.finish_reason) {
       translatedResponse = {
         type: 'message_delta',
         delta: {
-          stop_reason: translateFinishReason(choice.finish_reason),
+          stop_reason: translateFinishReason(choice.finish_reason) as Anthropic.Messages.StopReason,
         },
-      };
+      } as Anthropic.Messages.MessageDeltaEvent;
+    } else {
+      // Default to empty content block delta
+      translatedResponse = {
+        type: 'content_block_delta',
+        index: 0,
+        delta: {
+          type: 'text_delta',
+          text: '',
+        },
+      } as Anthropic.Messages.ContentBlockDeltaEvent;
     }
+  } else {
+    // Not a chat completion chunk - return default
+    translatedResponse = {
+      type: 'content_block_delta',
+      index: 0,
+      delta: {
+        type: 'text_delta',
+        text: '',
+      },
+    } as Anthropic.Messages.ContentBlockDeltaEvent;
   }
 
   // Log the translated Anthropic chunk for debugging
@@ -247,7 +260,7 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
   return translatedResponse;
 }
 
-function translateFinishReason(reason: string): string {
+function translateFinishReason(reason: string): Anthropic.Messages.StopReason {
   switch (reason) {
     case 'stop':
       return 'end_turn';

@@ -180,3 +180,14 @@ DEBUG=anthropic-proxy:request,anthropic-proxy:response npm run dev
 
 ## Development Best Practices
 - When finishing a task, run the linter and fix any warnings before considering it complete
+
+## Translation and Impersonation Approach
+
+### API Translation Strategy
+- We are translating an API with the goal of impersonating it convincingly enough to make actual, real-world applications work
+- Cannot leave fields unset or behave differently from the official Anthropic API
+- If features or fields are not present in OpenAPI but are required to implement the Anthropic API, we need to approximate those features
+- Strategies for handling missing features:
+  * Hard-code values when appropriate
+  * Approximate missing functionality
+  * Introduce configuration settings to allow users to specify desired behavior

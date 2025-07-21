@@ -1,10 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { AnthropicRequest } from '../types';
+import Anthropic from '@anthropic-ai/sdk';
 import { createError } from './error-handler';
 
 export const validateAnthropicRequest = (req: Request, res: Response, next: NextFunction) => {
   try {
-    const request: AnthropicRequest = req.body;
+    const request: Anthropic.Messages.MessageCreateParams = req.body;
 
     // Basic structure validation
     if (!request || typeof request !== 'object') {

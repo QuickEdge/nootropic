@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import Anthropic from '@anthropic-ai/sdk';
 import { AnthropicRequest, AnthropicResponse, AnthropicStreamResponse } from '../types';
 import { ConfigManager } from '../utils/config';
 
@@ -136,61 +137,71 @@ export class ConversationLogger {
       return;
     }
 
-    console.log(`📝 Processing chunk for session ${sessionId}:`, chunk.type, chunk.delta?.text ? `"${chunk.delta.text}"` : 'no text');
+    console.log(`📝 Processing chunk for session ${sessionId}:`, chunk.type);
 
     // Handle different chunk types
     switch (chunk.type) {
-      case 'message_start':
-        if (chunk.message?.id) {
-          session.requestId = chunk.message.id;
+      case 'message_start': {
+        const msgStart = chunk as Anthropic.Messages.MessageStartEvent;
+        if (msgStart.message?.id) {
+          session.requestId = msgStart.message.id;
           console.log(`🆔 Set request ID: ${session.requestId}`);
         }
-        if (chunk.message?.usage) {
+        if (msgStart.message?.usage) {
           session.usage = {
-            input_tokens: chunk.message.usage.input_tokens,
-            output_tokens: chunk.message.usage.output_tokens
+            input_tokens: msgStart.message.usage.input_tokens,
+            output_tokens: msgStart.message.usage.output_tokens
           };
           console.log(`📊 Initial usage: ${session.usage.input_tokens} input, ${session.usage.output_tokens} output`);
         }
         break;
+      }
       
-      case 'content_block_start':
-        if (chunk.content_block?.type === 'text') {
+      case 'content_block_start': {
+        const blockStart = chunk as Anthropic.Messages.ContentBlockStartEvent;
+        if (blockStart.content_block?.type === 'text') {
           console.log(`📄 Started text content block`);
-        } else if (chunk.content_block?.type === 'tool_use') {
-          console.log(`🔧 Started tool use: ${chunk.content_block.name}`);
+        } else if (blockStart.content_block?.type === 'tool_use') {
+          console.log(`🔧 Started tool use: ${blockStart.content_block.name}`);
         } else {
-          console.log(`📦 Started content block of type: ${chunk.content_block?.type}`);
+          console.log(`📦 Started content block of type: ${blockStart.content_block?.type}`);
         }
         break;
+      }
 
-      case 'content_block_delta':
-        if (chunk.delta?.text) {
-          session.accumulatedContent += chunk.delta.text;
+      case 'content_block_delta': {
+        const blockDelta = chunk as Anthropic.Messages.ContentBlockDeltaEvent;
+        if (blockDelta.delta.type === 'text_delta') {
+          session.accumulatedContent += blockDelta.delta.text;
           console.log(`📝 Accumulated content length: ${session.accumulatedContent.length}`);
-        } else if (chunk.delta?.partial_json) {
-          console.log(`🔧 Tool arguments delta: ${chunk.delta.partial_json}`);
+        } else if (blockDelta.delta.type === 'input_json_delta') {
+          console.log(`🔧 Tool arguments delta: ${blockDelta.delta.partial_json}`);
         } else {
-          console.log(`⚠️ content_block_delta chunk has no text or partial_json`);
+          console.log(`⚠️ content_block_delta chunk has unhandled type: ${blockDelta.delta.type}`);
         }
         break;
+      }
 
-      case 'content_block_stop':
-        console.log(`🏁 Content block stopped at index ${chunk.index}`);
+      case 'content_block_stop': {
+        const blockStop = chunk as Anthropic.Messages.ContentBlockStopEvent;
+        console.log(`🏁 Content block stopped at index ${blockStop.index}`);
         break;
+      }
 
-      case 'message_delta':
-        if (chunk.delta?.stop_reason) {
-          session.stopReason = chunk.delta.stop_reason;
+      case 'message_delta': {
+        const msgDelta = chunk as Anthropic.Messages.MessageDeltaEvent;
+        if (msgDelta.delta?.stop_reason) {
+          session.stopReason = msgDelta.delta.stop_reason;
           console.log(`🛑 Stop reason: ${session.stopReason}`);
         }
-        if (chunk.delta?.usage?.output_tokens) {
+        if (msgDelta.usage) {
           if (session.usage) {
-            session.usage.output_tokens = chunk.delta.usage.output_tokens;
+            session.usage.output_tokens = msgDelta.usage.output_tokens;
             console.log(`📊 Updated output tokens: ${session.usage.output_tokens}`);
           }
         }
         break;
+      }
         
       default:
         console.log(`❓ Unknown chunk type: ${chunk.type}`);
@@ -215,13 +226,20 @@ export class ConversationLogger {
         role: 'assistant',
         content: [{
           type: 'text',
-          text: session.accumulatedContent
-        }],
+          text: session.accumulatedContent,
+          citations: null
+        } as Anthropic.Messages.TextBlock],
         model: session.request.model,
-        stop_reason: (session.stopReason as 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use') || 'end_turn',
-        usage: session.usage || {
-          input_tokens: 0,
-          output_tokens: 0
+        stop_reason: (session.stopReason as Anthropic.Messages.StopReason) || 'end_turn',
+        stop_sequence: null,
+        usage: {
+          input_tokens: session.usage?.input_tokens || 0,
+          output_tokens: session.usage?.output_tokens || 0,
+          // Anthropic-specific fields - not available from OpenAI proxy
+          cache_creation_input_tokens: null,
+          cache_read_input_tokens: null,
+          server_tool_use: null,
+          service_tier: 'standard' as Anthropic.Messages.Usage['service_tier']
         }
       };
 

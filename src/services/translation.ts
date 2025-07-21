@@ -1,12 +1,9 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { AnthropicRequest, AnthropicTool } from '../types';
 import { ModelConfig } from '../utils/config';
 
-type AnthropicToolChoice = { type: 'auto' | 'any' | 'tool'; name?: string };
-
 export class TranslationService {
-  static anthropicToOpenAI(request: AnthropicRequest, modelConfig: ModelConfig): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming | OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming {
+  static anthropicToOpenAI(request: Anthropic.Messages.MessageCreateParams, modelConfig: ModelConfig): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming | OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming {
     const { messages, system } = request;
     
     const openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
@@ -49,7 +46,7 @@ export class TranslationService {
     }
   }
 
-  private static translateSystemContent(system: string | any[]): string {
+  private static translateSystemContent(system: string | Anthropic.Messages.TextBlockParam[]): string {
     if (typeof system === 'string') {
       return system;
     }
@@ -63,7 +60,7 @@ export class TranslationService {
     return textParts;
   }
 
-  private static translateAnthropicMessage(message: any): OpenAI.Chat.Completions.ChatCompletionMessageParam {
+  private static translateAnthropicMessage(message: Anthropic.Messages.MessageParam): OpenAI.Chat.Completions.ChatCompletionMessageParam {
     if (typeof message.content === 'string') {
       if (message.role === 'assistant') {
         return {
@@ -80,7 +77,7 @@ export class TranslationService {
 
     // Handle complex content with text and images
     const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = message.content
-      .map((item: any) => {
+      .map((item: Anthropic.Messages.ContentBlockParam) => {
         // Note: cache_control is intentionally filtered out as OpenAI-compatible APIs don't support it
         if (item.type === 'text') {
           return {
@@ -122,18 +119,126 @@ export class TranslationService {
     }
   }
 
-  private static translateAnthropicTools(tools: AnthropicTool[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
-    return tools.map(tool => ({
-      type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.input_schema as Record<string, unknown>,
-      },
-    }));
+  private static translateAnthropicTools(tools: Anthropic.Messages.ToolUnion[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
+    return tools.map(tool => {
+      // Handle different tool types in the ToolUnion
+      if ('input_schema' in tool) {
+        // This is a standard Tool with input_schema
+        return {
+          type: 'function' as const,
+          function: {
+            name: tool.name,
+            description: tool.description || '',
+            parameters: tool.input_schema as Record<string, unknown>,
+          },
+        };
+      } else if (tool.type === 'bash_20250124') {
+        // ToolBash20250124 - generate schema based on known structure
+        return {
+          type: 'function' as const,
+          function: {
+            name: tool.name,
+            description: 'Execute bash commands',
+            parameters: {
+              type: 'object',
+              properties: {
+                command: {
+                  type: 'string',
+                  description: 'The bash command to execute'
+                }
+              },
+              required: ['command']
+            },
+          },
+        };
+      } else if (tool.type === 'text_editor_20250124') {
+        // ToolTextEditor20250124 - generate schema based on known structure
+        return {
+          type: 'function' as const,
+          function: {
+            name: tool.name,
+            description: 'Edit text files',
+            parameters: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: 'Path to the file'
+                },
+                content: {
+                  type: 'string',
+                  description: 'New content for the file'
+                }
+              },
+              required: ['path', 'content']
+            },
+          },
+        };
+      } else if (tool.type === 'text_editor_20250429') {
+        // TextEditor20250429 - str_replace_based_edit_tool
+        return {
+          type: 'function' as const,
+          function: {
+            name: tool.name,
+            description: 'String replacement based text editor',
+            parameters: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: 'Path to the file'
+                },
+                old_str: {
+                  type: 'string',
+                  description: 'String to replace'
+                },
+                new_str: {
+                  type: 'string',
+                  description: 'Replacement string'
+                }
+              },
+              required: ['path', 'old_str', 'new_str']
+            },
+          },
+        };
+      } else if (tool.type === 'web_search_20250305') {
+        // WebSearchTool20250305
+        return {
+          type: 'function' as const,
+          function: {
+            name: tool.name,
+            description: 'Search the web',
+            parameters: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'Search query'
+                }
+              },
+              required: ['query']
+            },
+          },
+        };
+      } else {
+        // Unknown tool type - create minimal schema
+        console.warn(`Unknown tool type in ToolUnion: ${JSON.stringify(tool)}`);
+        return {
+          type: 'function' as const,
+          function: {
+            name: ('name' in tool ? tool.name : 'unknown') || 'unknown',
+            description: 'Unknown tool type',
+            parameters: {
+              type: 'object',
+              properties: {},
+            },
+          },
+        };
+      }
+    });
   }
 
-  private static translateAnthropicToolChoice(toolChoice: AnthropicToolChoice | undefined): OpenAI.Chat.Completions.ChatCompletionToolChoiceOption {
+  private static translateAnthropicToolChoice(toolChoice: Anthropic.Messages.ToolChoice | undefined): OpenAI.Chat.Completions.ChatCompletionToolChoiceOption {
     if (!toolChoice) {
       return 'auto';
     }
@@ -171,13 +276,14 @@ export class TranslationService {
     }
     
     const message = choice.message;
-    const content: Anthropic.Messages.MessageParam['content'] = [];
+    const content: Anthropic.Messages.ContentBlock[] = [];
     
     if (typeof message.content === 'string' && message.content) {
       content.push({
         type: 'text',
         text: message.content,
-      });
+        citations: null
+      } as Anthropic.Messages.TextBlock);
     }
 
     if (message.tool_calls) {
@@ -187,7 +293,7 @@ export class TranslationService {
           id: toolCall.id,
           name: toolCall.function.name,
           input: JSON.parse(toolCall.function.arguments),
-        });
+        } as Anthropic.Messages.ToolUseBlock);
       });
     }
 
@@ -200,9 +306,17 @@ export class TranslationService {
       content,
       model: originalModel,
       stop_reason: stopReason,
+      stop_sequence: null,
       usage: {
         input_tokens: response.usage?.prompt_tokens || 0,
         output_tokens: response.usage?.completion_tokens || 0,
+        // These fields are not provided by OpenAI, so we set them to null
+        // as they represent Anthropic-specific features
+        cache_creation_input_tokens: null,
+        cache_read_input_tokens: null,
+        server_tool_use: null,
+        // OpenAI doesn't have service tiers like Anthropic, default to standard
+        service_tier: 'standard' as Anthropic.Messages.Usage['service_tier']
       },
     } as Anthropic.Messages.Message;
   }
