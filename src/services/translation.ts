@@ -163,9 +163,19 @@ export class TranslationService {
   }
 
   static openAIToAnthropic(response: OpenAI.Chat.Completions.ChatCompletion, originalModel: string): Anthropic.Messages.Message {
-    const choice = response.choices[0];
-    const message = choice.message;
+    console.log('🔍 OpenAI response received:', JSON.stringify(response, null, 2));
     
+    if (!response.choices || response.choices.length === 0) {
+      console.error('❌ OpenAI response structure:', response);
+      throw new Error(`OpenAI response has no choices. Response: ${JSON.stringify(response)}`);
+    }
+    
+    const choice = response.choices[0];
+    if (!choice.message) {
+      throw new Error('OpenAI choice has no message');
+    }
+    
+    const message = choice.message;
     const content: Anthropic.Messages.MessageParam['content'] = [];
     
     if (typeof message.content === 'string' && message.content) {

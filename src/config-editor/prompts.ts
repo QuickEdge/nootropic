@@ -12,25 +12,25 @@ export interface ProviderConfig {
 export const PROVIDERS: Record<string, ProviderConfig> = {
   openrouter: {
     name: 'OpenRouter',
-    baseUrl: 'https://openrouter.ai/api',
+    baseUrl: 'https://openrouter.ai/api/v1',
     modelName: 'anthropic/claude-3.5-sonnet',
     apiKeyPrefix: 'sk-or-'
   },
   groq: {
     name: 'Groq',
-    baseUrl: 'https://api.groq.com/openai',
+    baseUrl: 'https://api.groq.com/openai/v1',
     modelName: 'llama-3.1-70b-versatile',
     apiKeyPrefix: 'gsk_'
   },
   openai: {
     name: 'OpenAI',
-    baseUrl: 'https://api.openai.com',
+    baseUrl: 'https://api.openai.com/v1',
     modelName: 'gpt-4o',
     apiKeyPrefix: 'sk-'
   },
   custom: {
     name: 'Custom Provider',
-    baseUrl: 'http://localhost:8080',
+    baseUrl: 'http://localhost:8080/v1',
     modelName: 'llama-3.1-8b'
   }
 };
