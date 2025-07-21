@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import TOML from '@iarna/toml';
+import xdgAppPaths from 'xdg-app-paths';
 
 export interface ModelConfig {
   id: string;
@@ -93,7 +93,8 @@ export class ConfigManager {
   private configPath: string;
 
   private constructor(private allowEmpty: boolean = false) {
-    this.configPath = path.join(os.homedir(), '.config', 'nootropic', 'config.toml');
+    const xdgPaths = xdgAppPaths('nootropic');
+    this.configPath = path.join(xdgPaths.config(), 'config.toml');
     this.config = this.loadConfig();
   }
 
@@ -123,8 +124,8 @@ export class ConfigManager {
         console.error('\n💡 Use the interactive config editor to create one:');
         console.error('   npm run config');
         console.error('\n🆘 Or create the file manually with:');
-        console.error('   mkdir -p ~/.config/nootropic');
-        console.error('   touch ~/.config/nootropic/config.toml');
+        console.error(`   mkdir -p ${path.dirname(this.configPath)}`);
+        console.error(`   touch ${this.configPath}`);
         process.exit(1);
       }
     } catch (error) {
