@@ -32,7 +32,7 @@ router.post('/', async (req, res, next) => {
     }
 
     const openAIService = new OpenAIService(modelConfig);
-    const openAIRequest = TranslationService.anthropicToOpenAI(request);
+    const openAIRequest = TranslationService.anthropicToOpenAI(request, modelConfig);
 
     if (request.stream) {
       res.setHeader('Content-Type', 'text/event-stream');

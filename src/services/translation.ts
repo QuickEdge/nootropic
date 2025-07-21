@@ -9,13 +9,13 @@ import {
   AnthropicTool,
   AnthropicResponse,
   OpenAIChatResponse } from '../types';
-import { ConfigManager } from '../utils/config';
+import { ModelConfig } from '../utils/config';
 
 type OpenAIToolChoice = 'none' | 'auto' | { type: 'function'; function: { name: string } };
 type AnthropicToolChoice = { type: 'auto' | 'any' | 'tool'; name?: string };
 
 export class TranslationService {
-  static anthropicToOpenAI(request: AnthropicRequest): OpenAIChatRequest {
+  static anthropicToOpenAI(request: AnthropicRequest, modelConfig: ModelConfig): OpenAIChatRequest {
     const { messages, system } = request;
     
     const openAIMessages: OpenAIChatMessage[] = [];
@@ -23,7 +23,7 @@ export class TranslationService {
     if (system) {
       openAIMessages.push({
         role: 'system',
-        content: system
+        content: this.translateSystemContent(system)
       });
     }
     
@@ -34,7 +34,7 @@ export class TranslationService {
     openAIMessages.push(...conversationMessages);
 
     return {
-      model: this.translateModel(request.model),
+      model: this.translateModel(request.model, modelConfig),
       max_tokens: request.max_tokens,
       messages: openAIMessages,
       temperature: request.temperature,
@@ -44,6 +44,40 @@ export class TranslationService {
       tool_choice: request.tool_choice ? this.translateAnthropicToolChoice(request.tool_choice) : undefined,
       stop: request.stop_sequences ? request.stop_sequences[0] : undefined,
     };
+  }
+
+  private static translateSystemContent(system: string | AnthropicContent[]): string | OpenAIContent[] {
+    if (typeof system === 'string') {
+      return system;
+    }
+    
+    // Handle array of content blocks, filtering out cache_control
+    const content: OpenAIContent[] = system.map(item => {
+      // Note: cache_control is intentionally filtered out as OpenAI-compatible APIs don't support it
+      if (item.type === 'text') {
+        return {
+          type: 'text',
+          text: item.text || '',
+        };
+      } else if (item.type === 'image') {
+        const source = item.source;
+        if (source && source.type === 'base64') {
+          return {
+            type: 'image_url',
+            image_url: {
+              url: `data:${source.media_type};base64,${source.data}`,
+            },
+          };
+        }
+      }
+      
+      return {
+        type: 'text',
+        text: '',
+      };
+    });
+
+    return content;
   }
 
   private static translateAnthropicMessage(message: AnthropicMessage): OpenAIChatMessage {
@@ -57,6 +91,7 @@ export class TranslationService {
     }
 
     const content: OpenAIContent[] = message.content.map(item => {
+      // Note: cache_control is intentionally filtered out as OpenAI-compatible APIs don't support it
       if (item.type === 'text') {
         return {
           type: 'text',
@@ -116,22 +151,9 @@ export class TranslationService {
     return 'auto';
   }
 
-  private static translateModel(anthropicModel: string): string {
-    const config = ConfigManager.getInstance();
-    const model = config.getModelConfig(anthropicModel);
-    
-    if (model && model.config.model_name) {
-      return model.config.model_name;
-    }
-    
-    const modelMap: Record<string, string> = {
-      'claude-3-opus-20240229': 'gpt-4',
-      'claude-3-sonnet-20240229': 'gpt-4-turbo',
-      'claude-3-5-sonnet-20241022': 'gpt-4o',
-      'claude-3-haiku-20240307': 'gpt-3.5-turbo',
-    };
-
-    return modelMap[anthropicModel] || 'gpt-4-turbo';
+  private static translateModel(anthropicModel: string, modelConfig: ModelConfig): string {
+    // Simply use the model_name from the provided modelConfig
+    return modelConfig.config.model_name;
   }
 
   static openAIToAnthropic(response: OpenAIChatResponse, originalModel: string): AnthropicResponse {

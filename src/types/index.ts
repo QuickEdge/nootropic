@@ -126,13 +126,16 @@ export interface AnthropicContent {
   tool_use_id?: string;
   content?: string;
   is_error?: boolean;
+  cache_control?: {
+    type: 'ephemeral';
+  };
 }
 
 export interface AnthropicRequest {
   model: string;
   max_tokens: number;
   messages: AnthropicMessage[];
-  system?: string;
+  system?: string | AnthropicContent[];
   temperature?: number;
   top_p?: number;
   top_k?: number;
