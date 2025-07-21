@@ -202,21 +202,22 @@ export class TranslationService {
           },
         };
       } else if (tool.type === 'web_search_20250305') {
-        // WebSearchTool20250305
+        // WebSearchTool20250305 - matches official Anthropic API schema
         return {
           type: 'function' as const,
           function: {
             name: tool.name,
-            description: 'Search the web',
+            description: 'Search the web for information',
             parameters: {
               type: 'object',
               properties: {
                 query: {
                   type: 'string',
-                  description: 'Search query'
+                  description: 'The search query to execute'
                 }
               },
-              required: ['query']
+              required: ['query'],
+              additionalProperties: false
             },
           },
         };
