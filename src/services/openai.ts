@@ -31,10 +31,12 @@ export class OpenAIService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError<{ error?: { message?: string } }>;
+        const fullUrl = `${this.modelConfig.config.base_url}/v1/chat/completions`;
         if (axiosError.response) {
-          throw new Error(`OpenAI API error: ${axiosError.response.data?.error?.message || axiosError.response.statusText}`);
+          const errorMessage = axiosError.response.data?.error?.message || axiosError.response.statusText;
+          throw new Error(`OpenAI API error: ${errorMessage} (POST ${fullUrl} - ${axiosError.response.status})`);
         }
-        throw new Error(`Failed to connect to OpenAI API: ${axiosError.message}`);
+        throw new Error(`Failed to connect to OpenAI API: ${axiosError.message} (POST ${fullUrl})`);
       }
       throw error;
     }
@@ -52,10 +54,12 @@ export class OpenAIService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError<{ error?: { message?: string } }>;
+        const fullUrl = `${this.modelConfig.config.base_url}/v1/chat/completions`;
         if (axiosError.response) {
-          throw new Error(`OpenAI API error: ${axiosError.response.data?.error?.message || axiosError.response.statusText}`);
+          const errorMessage = axiosError.response.data?.error?.message || axiosError.response.statusText;
+          throw new Error(`OpenAI API error: ${errorMessage} (POST ${fullUrl} - ${axiosError.response.status})`);
         }
-        throw new Error(`Failed to connect to OpenAI API: ${axiosError.message}`);
+        throw new Error(`Failed to connect to OpenAI API: ${axiosError.message} (POST ${fullUrl})`);
       }
       throw error;
     }

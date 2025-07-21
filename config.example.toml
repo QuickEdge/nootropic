@@ -17,7 +17,7 @@ display_name = "Claude 3.5 Sonnet"
 provider = "openai"
 
 [models.config]
-base_url = "https://api.openai.com/v1"
+base_url = "https://api.openai.com"
 api_key = "sk-your-openai-key-here"
 model_name = "gpt-4o"
 
@@ -27,7 +27,7 @@ display_name = "Claude 3 Opus"
 provider = "openai"
 
 [models.config]
-base_url = "https://api.openai.com/v1"
+base_url = "https://api.openai.com"
 api_key = "sk-your-openai-key-here"
 model_name = "gpt-4"
 
@@ -37,7 +37,7 @@ display_name = "Claude 3 Haiku"
 provider = "openai"
 
 [models.config]
-base_url = "https://api.openai.com/v1"
+base_url = "https://api.openai.com"
 api_key = "sk-your-openai-key-here"
 model_name = "gpt-4o-mini"
 
@@ -47,7 +47,7 @@ display_name = "Claude 3.5 Sonnet (Groq)"
 provider = "groq"
 
 [models.config]
-base_url = "https://api.groq.com/openai/v1"
+base_url = "https://api.groq.com/openai"
 api_key = "gsk_your_groq_key_here"
 model_name = "llama-3.1-70b-versatile"
 
