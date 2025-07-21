@@ -154,13 +154,29 @@ export class ConversationLogger {
         }
         break;
       
+      case 'content_block_start':
+        if (chunk.content_block?.type === 'text') {
+          console.log(`📄 Started text content block`);
+        } else if (chunk.content_block?.type === 'tool_use') {
+          console.log(`🔧 Started tool use: ${chunk.content_block.name}`);
+        } else {
+          console.log(`📦 Started content block of type: ${chunk.content_block?.type}`);
+        }
+        break;
+
       case 'content_block_delta':
         if (chunk.delta?.text) {
           session.accumulatedContent += chunk.delta.text;
           console.log(`📝 Accumulated content length: ${session.accumulatedContent.length}`);
+        } else if (chunk.delta?.partial_json) {
+          console.log(`🔧 Tool arguments delta: ${chunk.delta.partial_json}`);
         } else {
-          console.log(`⚠️ content_block_delta chunk has no text`);
+          console.log(`⚠️ content_block_delta chunk has no text or partial_json`);
         }
+        break;
+
+      case 'content_block_stop':
+        console.log(`🏁 Content block stopped at index ${chunk.index}`);
         break;
 
       case 'message_delta':
