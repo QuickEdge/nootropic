@@ -151,7 +151,8 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
           },
         },
       };
-    } else if (delta?.role) {
+    } else if (delta?.role && !delta?.tool_calls) {
+      // Only treat as message_start if there's a role but no tool calls
       translatedResponse = {
         type: 'message_start',
         message: {
@@ -166,9 +167,63 @@ function translateStreamChunk(openAIChunk: OpenAI.Chat.Completions.ChatCompletio
           },
         },
       };
+    } else if (delta?.tool_calls) {
+      // Handle tool calls - translate to tool_use content block
+      const toolCall = delta.tool_calls[0]; // OpenAI sends one tool call per chunk
+      
+      if (toolCall?.function?.name) {
+        // This is a tool_use content block start with function name
+        translatedResponse = {
+          type: 'content_block_start',
+          index: toolCall.index || 0,
+          content_block: {
+            type: 'tool_use',
+            id: `tool_${openAIChunk.id}_${toolCall.index || 0}`,
+            name: toolCall.function.name,
+            input: {}
+          }
+        };
+      } else if (toolCall?.function?.arguments) {
+        // This is a delta with tool arguments (could be first chunk with just arguments)
+        // If this is the first chunk and we have arguments but no name, treat as content_block_start
+        const isFirstChunk = !toolCall.function.name && toolCall.function.arguments;
+        
+        if (isFirstChunk) {
+          translatedResponse = {
+            type: 'content_block_start',
+            index: toolCall.index || 0,
+            content_block: {
+              type: 'tool_use',
+              id: `tool_${openAIChunk.id}_${toolCall.index || 0}`,
+              name: toolCall.function.arguments, // In some APIs, arguments might contain the tool name
+              input: {}
+            }
+          };
+        } else {
+          translatedResponse = {
+            type: 'content_block_delta',
+            index: toolCall.index || 0,
+            delta: {
+              partial_json: toolCall.function.arguments
+            }
+          };
+        }
+      } else if (toolCall?.function) {
+        // This is the start of a tool call but function name might come in a later chunk
+        // Treat as content_block_start with placeholder
+        translatedResponse = {
+          type: 'content_block_start',
+          index: toolCall.index || 0,
+          content_block: {
+            type: 'tool_use',
+            id: `tool_${openAIChunk.id}_${toolCall.index || 0}`,
+            name: 'pending', // Will be updated in subsequent chunks
+            input: {}
+          }
+        };
+      }
     } else if (delta?.content) {
-      // For Anthropic streaming, we need content_block_start before content_block_delta
-      // But since OpenAI doesn't send separate start events, we'll just use delta
+      // Regular text content
       translatedResponse = {
         type: 'content_block_delta',
         index: 0,

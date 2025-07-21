@@ -66,6 +66,7 @@ export interface AnthropicStreamResponse {
   index?: number;
   delta?: {
     text?: string;
+    partial_json?: string;
     stop_reason?: string;
     usage?: {
       input_tokens?: number;
