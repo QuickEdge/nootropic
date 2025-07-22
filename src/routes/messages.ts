@@ -45,26 +45,64 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
 
       try {
         const streamRequest = openAIRequest as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
-        const stream = await openAIService.createChatCompletionStream(streamRequest);
+        const streamResult = await openAIService.createChatCompletionStream(streamRequest);
         
-        // Create streaming tool call state manager for this session
-        const toolCallState = new StreamingToolCallState(sessionId);
-        
-        for await (const chunk of stream) {
-          try {
-            // Use new stateful streaming translation
-            const anthropicEvents = toolCallState.processChunk(chunk);
-            
-            // Send each event
-            for (const anthropicChunk of anthropicEvents) {
-              // Add chunk to logger in real-time
-              logger.addStreamChunk(sessionId, anthropicChunk);
-              
-              res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
+        if (streamResult === 'BATCHED_STREAM') {
+          // Handle batched streaming - events come pre-processed
+          console.log('📡 Processing batched streaming request');
+          
+          for await (const eventBatch of openAIService.createBatchedStream(streamRequest)) {
+            try {
+              // Events are already in Anthropic format from the batcher
+              for (const anthropicEvent of eventBatch) {
+                // Handle error events (using any type casting for custom error events)
+                if ((anthropicEvent as any).type === 'error') {
+                  console.error('📡 Batched stream error event:', anthropicEvent);
+                  res.write(`data: ${JSON.stringify({ error: (anthropicEvent as any).error })}\n\n`);
+                  continue;
+                }
+                
+                // Update model name in message_start events
+                if (anthropicEvent.type === 'message_start') {
+                  anthropicEvent.message.model = request.model;
+                }
+                
+                // Add event to logger
+                logger.addStreamChunk(sessionId, anthropicEvent);
+                
+                // Send to client
+                res.write(`data: ${JSON.stringify(anthropicEvent)}\n\n`);
+              }
+            } catch (error) {
+              console.error('Error processing batched stream events:', error);
+              console.error('Event batch was:', eventBatch);
+              // Send error to client but continue processing
+              res.write(`data: ${JSON.stringify({ error: 'Stream processing error' })}\n\n`);
             }
-          } catch (error) {
-            console.error('Error translating stream chunk:', error);
-            console.error('Chunk was:', chunk);
+          }
+        } else {
+          // Handle normal streaming - needs chunk translation
+          const stream = streamResult;
+          
+          // Create streaming tool call state manager for this session
+          const toolCallState = new StreamingToolCallState(sessionId);
+          
+          for await (const chunk of stream) {
+            try {
+              // Use new stateful streaming translation
+              const anthropicEvents = toolCallState.processChunk(chunk);
+              
+              // Send each event
+              for (const anthropicChunk of anthropicEvents) {
+                // Add chunk to logger in real-time
+                logger.addStreamChunk(sessionId, anthropicChunk);
+                
+                res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
+              }
+            } catch (error) {
+              console.error('Error translating stream chunk:', error);
+              console.error('Chunk was:', chunk);
+            }
           }
         }
 

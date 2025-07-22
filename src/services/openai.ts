@@ -1,12 +1,15 @@
 import OpenAI from 'openai';
 import { Stream } from 'openai/streaming';
+import Anthropic from '@anthropic-ai/sdk';
 import { ModelConfig } from '../utils/config';
 import { SimpleToolBatcher } from './simple-tool-batcher';
+import { StreamingToolBatcher } from './streaming-tool-batcher';
 
 export class OpenAIService {
   private client: OpenAI;
   private modelConfig: ModelConfig;
   private toolBatcher?: SimpleToolBatcher;
+  private streamingBatcher?: StreamingToolBatcher;
 
   constructor(modelConfig: ModelConfig) {
     this.modelConfig = modelConfig;
@@ -21,9 +24,10 @@ export class OpenAIService {
       timeout: 60000,
     });
 
-    // Initialize simple tool batcher if tool result limiting is enabled
+    // Initialize tool batchers if tool result limiting is enabled
     if (modelConfig.config.limit_tool_results) {
       this.toolBatcher = new SimpleToolBatcher(true);
+      this.streamingBatcher = new StreamingToolBatcher(true);
       console.log(`🔧 Tool result batching enabled for model "${modelConfig.id}" - will send 1 tool result per request`);
     }
   }
@@ -75,15 +79,15 @@ export class OpenAIService {
     }
   }
 
-  async createChatCompletionStream(request: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming): Promise<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>> {
+  async createChatCompletionStream(request: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming): Promise<Stream<OpenAI.Chat.Completions.ChatCompletionChunk> | 'BATCHED_STREAM'> {
     try {
-      // Note: Batching is not yet implemented for streaming requests
-      // This would require more complex handling of streaming responses
-      // For now, fall back to direct API calls for streaming
-      if (this.toolBatcher && this.containsToolResults(request)) {
-        console.log('⚠️ Tool results detected in streaming request - batching not yet supported for streaming');
+      // Check if we need to use streaming batching
+      if (this.streamingBatcher && this.streamingBatcher.needsBatching(request)) {
+        console.log('🔄 Using streaming tool result batching');
+        return 'BATCHED_STREAM';
       }
       
+      // Direct streaming for normal requests
       const response = await this.client.chat.completions.create(request);
       return response;
     } catch (error) {
@@ -99,6 +103,22 @@ export class OpenAIService {
         
         throw new Error(`OpenAI API error: ${error.message} (POST ${fullUrl} - ${error.status})`);
       }
+      throw error;
+    }
+  }
+
+  /**
+   * Processes a batched streaming request and returns an async generator of events
+   */
+  async *createBatchedStream(request: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming): AsyncGenerator<Anthropic.Messages.MessageStreamEvent[]> {
+    if (!this.streamingBatcher) {
+      throw new Error('Streaming batcher not initialized');
+    }
+
+    try {
+      yield* this.streamingBatcher.processSequentialStreams(this.client, request);
+    } catch (error) {
+      console.error('Error in batched streaming:', error);
       throw error;
     }
   }
