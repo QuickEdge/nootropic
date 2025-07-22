@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { Stream } from 'openai/streaming';
 import { ModelConfig } from '../utils/config';
+import Logger from '../utils/logger';
 
 export class OpenAIService {
   private client: OpenAI;

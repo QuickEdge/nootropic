@@ -29,6 +29,7 @@
     "express": "^4.18.2",
     "openai": "^5.10.1",
     "uuid": "^11.1.0",
+    "winston": "^3.17.0",
     "xdg-app-paths": "^8.3.0"
   },
   "devDependencies": {

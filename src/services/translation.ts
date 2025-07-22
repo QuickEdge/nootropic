@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { ModelConfig } from '../utils/config';
+import Logger from '../utils/logger';
 
 export class TranslationService {
 
@@ -16,24 +17,15 @@ export class TranslationService {
     ).length;
     
     if (toolUseCount > 0 || toolResultCount > 0 || request.tools) {
-      console.log('🔄 Processing conversation with tools:', {
+      Logger.info('Processing conversation with tools', {
         total_messages: messages.length,
         tool_use_messages: toolUseCount,
         tool_result_messages: toolResultCount,
         has_system: !!system,
         has_tools_defined: !!request.tools,
-        tools_count: request.tools ? request.tools.length : 0
+        tools_count: request.tools ? request.tools.length : 0,
+        tool_names: request.tools ? request.tools.map((tool: any) => tool.name || tool.type || 'unknown') : []
       });
-      
-      // Log tool definitions if present
-      if (request.tools && request.tools.length > 0) {
-        console.log('📋 Tool definitions being sent:');
-        request.tools.forEach((tool, index) => {
-          if ('name' in tool) {
-            console.log(`  ${index + 1}. ${tool.name} (type: ${tool.type || 'unknown'})`);
-          }
-        });
-      }
     }
     
     const openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
@@ -147,7 +139,7 @@ export class TranslationService {
       
       // Convert tool_use blocks to tool_calls - use original IDs
       const toolCalls = toolUseBlocks.map((toolUse) => {
-        console.log(`🆔 Using tool use ID verbatim: ${toolUse.id} (tool: ${toolUse.name})`);
+        Logger.debug('Using tool use ID verbatim', { id: toolUse.id, tool: toolUse.name });
         return {
           id: toolUse.id, // Use the original Anthropic ID
           type: 'function' as const,
@@ -186,7 +178,7 @@ export class TranslationService {
 
       // Then, add tool result messages - use original IDs
       toolResultBlocks.forEach(toolResult => {
-        console.log(`🔧 Translating tool_result block using original ID:`, {
+        Logger.debug('Translating tool_result block using original ID', {
           original_tool_use_id: toolResult.tool_use_id,
           content_type: typeof toolResult.content,
           content_length: typeof toolResult.content === 'string' 
@@ -203,7 +195,7 @@ export class TranslationService {
             : JSON.stringify(toolResult.content),
         };
         
-        console.log('📦 Creating tool message:', {
+        Logger.debug('Creating tool message', {
           role: toolMessage.role,
           tool_call_id: toolMessage.tool_call_id,
           content_length: toolMessage.content.length,
@@ -432,19 +424,20 @@ export class TranslationService {
   }
 
   static openAIToAnthropic(response: OpenAI.Chat.Completions.ChatCompletion, originalModel: string): Anthropic.Messages.Message {
-    console.log('🔍 OpenAI response received:', JSON.stringify(response, null, 2));
+    Logger.debug('OpenAI response received', response);
     
     // Check if this response is likely in response to tool results
     const hasToolResults = response.choices?.[0]?.message?.content && 
       typeof response.choices[0].message.content === 'string';
     if (hasToolResults) {
-      console.log('📝 OpenAI response to tool results - content preview:', 
-        response.choices[0].message.content?.substring(0, 300) + 
-        (response.choices[0].message.content && response.choices[0].message.content.length > 300 ? '...' : ''));
+      Logger.debug('OpenAI response to tool results', {
+        content_preview: response.choices[0].message.content?.substring(0, 300) + 
+          (response.choices[0].message.content && response.choices[0].message.content.length > 300 ? '...' : '')
+      });
     }
     
     if (!response.choices || response.choices.length === 0) {
-      console.error('❌ OpenAI response structure:', response);
+      Logger.error('OpenAI response has no choices', { response });
       throw new Error(`OpenAI response has no choices. Response: ${JSON.stringify(response)}`);
     }
     
@@ -466,7 +459,7 @@ export class TranslationService {
 
     if (message.tool_calls) {
       message.tool_calls.forEach(toolCall => {
-        console.log('🔧 Parsing tool call arguments:', {
+        Logger.debug('Parsing tool call arguments', {
           id: toolCall.id,
           name: toolCall.function.name,
           arguments: toolCall.function.arguments
@@ -475,7 +468,7 @@ export class TranslationService {
         try {
           const parsedInput = this.safeParseToolArguments(toolCall.function.arguments);
           
-          console.log('🔄 Using provider tool ID directly:', {
+          Logger.debug('Using provider tool ID directly', {
             provider_id: toolCall.id,
             tool_name: toolCall.function.name
           });
@@ -487,7 +480,7 @@ export class TranslationService {
             input: parsedInput,
           } as Anthropic.Messages.ToolUseBlock);
         } catch (error) {
-          console.error('❌ Failed to parse tool call arguments:', {
+          Logger.error('Failed to parse tool call arguments', {
             toolId: toolCall.id,
             toolName: toolCall.function.name,
             arguments: toolCall.function.arguments,
@@ -524,7 +517,7 @@ export class TranslationService {
     // Log final response details for tool result flow analysis
     const hasTextContent = content.some(block => block.type === 'text');
     const hasToolUseContent = content.some(block => block.type === 'tool_use');
-    console.log('📤 Returning Anthropic response to Claude Code:', {
+    Logger.debug('Returning Anthropic response to Claude Code', {
       stop_reason: stopReason,
       content_blocks: content.length,
       has_text: hasTextContent,
@@ -561,7 +554,7 @@ export class TranslationService {
       case 'tool_calls':
         return 'tool_use';
       default:
-        console.warn(`Unknown finish_reason: "${reason}", defaulting to 'end_turn'`);
+        Logger.warn(`Unknown finish_reason: "${reason}", defaulting to 'end_turn'`);
         return 'end_turn';
     }
   }

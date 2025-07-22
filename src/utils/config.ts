@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import TOML from '@iarna/toml';
 import xdgAppPaths from 'xdg-app-paths';
+import Logger from './logger';
 
 export interface ModelConfig {
   id: string;
@@ -118,17 +119,14 @@ export class ConfigManager {
         return DEFAULT_CONFIG;
       } else {
         // Hard fail - don't create sample config automatically
-        console.error('\n❌ No configuration file found!');
-        console.error(`\n📝 Expected config file at: ${this.configPath}`);
-        console.error('\n💡 Use the interactive config editor to create one:');
-        console.error('   npm run config');
-        console.error('\n🆘 Or create the file manually with:');
-        console.error(`   mkdir -p ${path.dirname(this.configPath)}`);
-        console.error(`   touch ${this.configPath}`);
+        Logger.error('No configuration file found!');
+        Logger.error(`Expected config file at: ${this.configPath}`);
+        Logger.error('Use the interactive config editor to create one: npm run config');
+        Logger.error(`Or create the file manually: mkdir -p ${path.dirname(this.configPath)} && touch ${this.configPath}`);
         process.exit(1);
       }
     } catch (error) {
-      console.error(`\n❌ Failed to load config from ${this.configPath}:`, error);
+      Logger.error(`Failed to load config from ${this.configPath}`, { error });
       process.exit(1);
     }
   }
@@ -224,7 +222,7 @@ export class ConfigManager {
       models: [] // Ensure models array is empty
     };
     fs.writeFileSync(this.configPath, TOML.stringify(emptyConfig as TOML.JsonMap));
-    console.log(`✅ Empty configuration created at: ${this.configPath}`);
+    Logger.info(`Empty configuration created at: ${this.configPath}`);
   }
 
   public createSampleConfig(): void {
@@ -243,9 +241,9 @@ export class ConfigManager {
       const diff = this.createConfigDiff();
       
       fs.writeFileSync(this.configPath, TOML.stringify(diff as TOML.JsonMap));
-      console.log(`✅ Configuration saved to: ${this.configPath}`);
+      Logger.info(`Configuration saved to: ${this.configPath}`);
     } catch (error) {
-      console.error(`❌ Failed to save configuration:`, error);
+      Logger.error('Failed to save configuration', { error });
       throw error;
     }
   }

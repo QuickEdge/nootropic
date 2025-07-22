@@ -4,18 +4,17 @@ import { messagesRouter } from './routes/messages';
 import { modelsRouter } from './routes/models';
 import { errorHandler } from './middleware/error-handler';
 import { ConfigManager } from './utils/config';
+import Logger from './utils/logger';
 
 const configManager = ConfigManager.getInstance();
 const config = configManager.getConfig();
 
 // Check if any models are configured
 if (!config.models || config.models.length === 0) {
-  console.error('\n❌ No models configured!');
-  console.error('\n📝 Please configure at least one model to run the proxy service.');
-  console.error('\n💡 Use the interactive config editor to add models:');
-  console.error('   npm run config');
-  console.error('\n🆘 Or add models manually to your config file at:');
-  console.error(`   ${configManager.getConfigPath()}`);
+  Logger.error('No models configured!');
+  Logger.error('Please configure at least one model to run the proxy service.');
+  Logger.error('Use the interactive config editor to add models: npm run config');
+  Logger.error(`Or add models manually to your config file at: ${configManager.getConfigPath()}`);
   process.exit(1);
 }
 
@@ -45,16 +44,17 @@ app.use('/v1/models', modelsRouter);
 app.use(errorHandler);
 
 app.listen(port, config.server.host, () => {
-  console.log(`\n🚀 OpenAI Anthropic Proxy listening on ${config.server.host}:${port}`);
-  console.log(`📊 Configured models: ${config.models.length}`);
+  Logger.info(`OpenAI Anthropic Proxy listening on ${config.server.host}:${port}`);
+  Logger.info(`Configured models: ${config.models.length}`);
   const defaultModelId = ConfigManager.getInstance().getDefaultModel();
-  console.log(`🔧 Default model: ${defaultModelId || 'none'}`);
+  Logger.info(`Default model: ${defaultModelId || 'none'}`);
   
   if (config.models.length > 0) {
-    console.log('\n📋 Available models:');
-    config.models.forEach(model => {
-      const isDefault = model.id === defaultModelId;
-      console.log(`   - ${model.id} (${model.display_name})${isDefault ? ' [DEFAULT]' : ''}`);
+    Logger.info('Available models:', {
+      models: config.models.map(model => {
+        const isDefault = model.id === defaultModelId;
+        return `${model.id} (${model.display_name})${isDefault ? ' [DEFAULT]' : ''}`;
+      })
     });
   }
 });
