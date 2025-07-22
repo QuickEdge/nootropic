@@ -149,7 +149,8 @@ export class TranslationService {
       
       // Convert tool_use blocks to tool_calls
       const toolCalls = toolUseBlocks.map((toolUse) => {
-        const openAIId = this.toolIdMapper.mapAnthropicId(toolUse.id, toolUse.name);
+        const openAIId = this.toolIdMapper.mapAnthropicId(toolUse.id);
+        console.log(`🆔 Mapping tool use ID: ${toolUse.id} → ${openAIId} (tool: ${toolUse.name})`);
         return {
           id: openAIId,
           type: 'function' as const,
