@@ -206,13 +206,22 @@ export class TranslationService {
           is_error: toolResult.is_error || false
         });
         
-        results.push({
-          role: 'tool',
+        const toolMessage = {
+          role: 'tool' as const,
           tool_call_id: openaiId,
           content: typeof toolResult.content === 'string' 
             ? toolResult.content 
             : JSON.stringify(toolResult.content),
+        };
+        
+        console.log('📦 Creating tool message:', {
+          role: toolMessage.role,
+          tool_call_id: toolMessage.tool_call_id,
+          content_length: toolMessage.content.length,
+          content_preview: toolMessage.content.substring(0, 50) + '...'
         });
+        
+        results.push(toolMessage);
       });
     }
 

@@ -49,6 +49,31 @@ export class OpenAIService {
         console.log('---\n');
       }
       
+      // Log the exact request for debugging tool issues
+      if (toolResultCount > 0) {
+        console.log('\n🔍 FULL REQUEST WITH TOOL RESULTS:');
+        console.log(JSON.stringify({
+          model: request.model,
+          messages: request.messages.map(msg => {
+            if (msg.role === 'tool') {
+              return {
+                role: msg.role,
+                tool_call_id: msg.tool_call_id,
+                content: msg.content?.substring(0, 100) + '...'
+              };
+            } else if (msg.role === 'assistant' && 'tool_calls' in msg) {
+              return {
+                role: msg.role,
+                content: msg.content,
+                tool_calls: msg.tool_calls
+              };
+            }
+            return msg;
+          }),
+          tools: request.tools ? `[${request.tools.length} tools defined]` : undefined
+        }, null, 2));
+      }
+      
       const response = await this.client.chat.completions.create(request) as OpenAI.Chat.Completions.ChatCompletion;
       return response;
     } catch (error) {
