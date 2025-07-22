@@ -110,23 +110,6 @@ export const prompts = {
     validate: validators.isRequired
   }),
 
-  maxTokens: (currentValue?: number): InputQuestion => ({
-    type: 'input',
-    name: 'max_tokens',
-    message: '📊 Max tokens limit (0 for no limit):',
-    default: (currentValue || 0).toString(),
-    validate: (input: string | number) => {
-      const num = typeof input === 'number' ? input : parseInt(String(input).trim(), 10);
-      if (isNaN(num)) return 'Must be a valid number';
-      if (num < 0) return 'Must be 0 or greater';
-      if (num > 100000) return 'Must be less than 100,000';
-      return true;
-    },
-    filter: (input: string | number) => {
-      const num = typeof input === 'number' ? input : parseInt(String(input).trim(), 10);
-      return (isNaN(num) || num === 0) ? undefined : num;
-    }
-  }),
 
   editModelSelection: (models: Array<{ id: string; display_name: string }>): ListQuestion => ({
     type: 'list',

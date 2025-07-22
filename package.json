@@ -23,6 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
     "@iarna/toml": "^2.2.5",
+    "@inquirer/number": "^3.0.17",
     "axios": "^1.6.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

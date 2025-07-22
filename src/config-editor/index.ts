@@ -1,5 +1,6 @@
 import inquirer from 'inquirer';
 import chalk from 'chalk';
+import numberPrompt from '@inquirer/number';
 import { Config, ModelConfig, ConfigManager } from '../utils/config';
 import { prompts, PROVIDERS } from './prompts';
 import { validators } from './validators';
@@ -78,14 +79,26 @@ export class InteractiveConfigEditor {
     const existingApiKey = this.findExistingApiKey(provider);
 
     // Model configuration
-    const modelAnswers = await inquirer.prompt([
+    const basicAnswers = await inquirer.prompt([
       prompts.modelId(existingIds),
       prompts.displayName(),
       provider === 'custom' ? prompts.baseUrl(providerConfig.baseUrl) : null,
       prompts.apiKey(providerConfig.name, existingApiKey),
-      prompts.modelName(providerConfig.modelName),
-      prompts.maxTokens()
+      prompts.modelName(providerConfig.modelName)
     ].filter(Boolean));
+
+    // Use dedicated number prompt for max_tokens
+    const maxTokens = await numberPrompt({
+      message: '📊 Max tokens limit (0 for no limit):',
+      default: 0,
+      min: 0,
+      max: 100000
+    });
+
+    const modelAnswers = {
+      ...basicAnswers,
+      max_tokens: maxTokens === 0 ? undefined : maxTokens
+    } as typeof basicAnswers & { max_tokens: number | undefined };
 
     // Create model configuration
     const newModel: ModelConfig = {
@@ -131,7 +144,7 @@ export class InteractiveConfigEditor {
     console.log(chalk.blue(`\n✏️  Editing model: ${model.display_name}\n`));
 
 
-    const updates = await inquirer.prompt([
+    const basicUpdates = await inquirer.prompt([
       {
         type: 'input',
         name: 'display_name',
@@ -162,25 +175,21 @@ export class InteractiveConfigEditor {
         message: '🤖 Model name:',
         default: model.config?.model_name || '',
         validate: validators.isRequired
-      },
-      {
-        type: 'input',
-        name: 'max_tokens',
-        message: '📊 Max tokens limit (0 for no limit):',
-        default: (model.config?.max_tokens || 0).toString(),
-        validate: (input: string | number) => {
-          const num = typeof input === 'number' ? input : parseInt(String(input).trim(), 10);
-          if (isNaN(num)) return 'Must be a valid number';
-          if (num < 0) return 'Must be 0 or greater';
-          if (num > 100000) return 'Must be less than 100,000';
-          return true;
-        },
-        filter: (input: string | number) => {
-          const num = typeof input === 'number' ? input : parseInt(String(input).trim(), 10);
-          return (isNaN(num) || num === 0) ? undefined : num;
-        }
       }
     ]);
+
+    // Use dedicated number prompt for max_tokens
+    const maxTokens = await numberPrompt({
+      message: '📊 Max tokens limit (0 for no limit):',
+      default: model.config?.max_tokens || 0,
+      min: 0,
+      max: 100000
+    });
+
+    const updates = {
+      ...basicUpdates,
+      max_tokens: maxTokens === 0 ? undefined : maxTokens
+    } as typeof basicUpdates & { max_tokens: number | undefined };
 
     // No need to handle default model here anymore
 
