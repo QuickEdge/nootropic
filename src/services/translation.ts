@@ -17,14 +17,25 @@ export class TranslationService {
       Array.isArray(msg.content) && msg.content.some(item => item.type === 'tool_result')
     ).length;
     
-    if (toolUseCount > 0 || toolResultCount > 0) {
+    if (toolUseCount > 0 || toolResultCount > 0 || request.tools) {
       console.log('🔄 Processing conversation with tools:', {
         total_messages: messages.length,
         tool_use_messages: toolUseCount,
         tool_result_messages: toolResultCount,
         has_system: !!system,
-        has_tools_defined: !!request.tools
+        has_tools_defined: !!request.tools,
+        tools_count: request.tools ? request.tools.length : 0
       });
+      
+      // Log tool definitions if present
+      if (request.tools && request.tools.length > 0) {
+        console.log('📋 Tool definitions being sent:');
+        request.tools.forEach((tool, index) => {
+          if ('name' in tool) {
+            console.log(`  ${index + 1}. ${tool.name} (type: ${tool.type || 'unknown'})`);
+          }
+        });
+      }
     }
     
     const openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];

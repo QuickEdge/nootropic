@@ -22,6 +22,33 @@ export class OpenAIService {
 
   async createChatCompletion(request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming): Promise<OpenAI.Chat.Completions.ChatCompletion> {
     try {
+      // Log comprehensive request details for debugging
+      const toolResultCount = request.messages.filter(msg => msg.role === 'tool').length;
+      const hasTools = request.tools && request.tools.length > 0;
+      
+      if (hasTools || toolResultCount > 0) {
+        console.log('\n📤 OPENAI API REQUEST DETAILS:');
+        console.log(`Provider: ${this.modelConfig.config.base_url}`);
+        console.log(`Model: ${request.model}`);
+        console.log(`Messages: ${request.messages.length} total`);
+        console.log(`Tool results: ${toolResultCount}`);
+        
+        if (hasTools) {
+          console.log(`\n🔧 Tools defined: ${request.tools!.length}`);
+          request.tools!.forEach((tool, index) => {
+            console.log(`  ${index + 1}. ${tool.function.name}`);
+          });
+          
+          // Warn if there are many tools
+          if (request.tools!.length > 10) {
+            console.warn(`⚠️ WARNING: Sending ${request.tools!.length} tools - some providers may have limits!`);
+          }
+        } else {
+          console.log('\n⚠️ No tools defined in request!');
+        }
+        console.log('---\n');
+      }
+      
       const response = await this.client.chat.completions.create(request) as OpenAI.Chat.Completions.ChatCompletion;
       return response;
     } catch (error) {
@@ -53,6 +80,13 @@ export class OpenAIService {
           console.error(`- Model: ${request.model}`);
           console.error(`- Stream: ${request.stream}`);
           console.error(`- Tools defined: ${request.tools ? request.tools.length : 0}`);
+          
+          if (request.tools && request.tools.length > 0) {
+            console.error('\nTool definitions sent:');
+            request.tools.forEach((tool, idx) => {
+              console.error(`  ${idx + 1}. ${tool.function.name}`);
+            });
+          }
         } else {
           console.error(`Request Body (preview):`, JSON.stringify(request).slice(0, 500));
         }
