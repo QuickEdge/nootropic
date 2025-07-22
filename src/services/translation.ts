@@ -15,7 +15,7 @@ export class TranslationService {
       });
     }
     
-    const conversationMessages = messages.map(msg => 
+    const conversationMessages = messages.flatMap(msg => 
       this.translateAnthropicMessage(msg)
     );
     
@@ -60,63 +60,110 @@ export class TranslationService {
     return textParts;
   }
 
-  private static translateAnthropicMessage(message: Anthropic.Messages.MessageParam): OpenAI.Chat.Completions.ChatCompletionMessageParam {
+  private static translateAnthropicMessage(message: Anthropic.Messages.MessageParam): OpenAI.Chat.Completions.ChatCompletionMessageParam[] {
+    // Simple string content
     if (typeof message.content === 'string') {
       if (message.role === 'assistant') {
-        return {
+        return [{
           role: 'assistant',
           content: message.content,
-        };
+        }];
       } else {
-        return {
+        return [{
           role: 'user',
           content: message.content,
-        };
+        }];
       }
     }
 
-    // Handle complex content with text and images
-    const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = message.content
-      .map((item: Anthropic.Messages.ContentBlockParam) => {
-        // Note: cache_control is intentionally filtered out as OpenAI-compatible APIs don't support it
-        if (item.type === 'text') {
-          return {
-            type: 'text' as const,
-            text: item.text || '',
-          };
-        } else if (item.type === 'image') {
-          const source = item.source;
-          if (source && source.type === 'base64') {
-            return {
-              type: 'image_url' as const,
-              image_url: {
-                url: `data:${source.media_type};base64,${source.data}`,
-              },
-            };
-          }
-        }
-        
-        return null;
-      })
-      .filter(Boolean) as OpenAI.Chat.Completions.ChatCompletionContentPart[];
+    // Handle complex content blocks
+    const results: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+    
+    // Extract different content types
+    const textAndImageContent: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
+    const toolUseBlocks: Anthropic.Messages.ToolUseBlockParam[] = [];
+    const toolResultBlocks: Anthropic.Messages.ToolResultBlockParam[] = [];
 
+    message.content.forEach((item: Anthropic.Messages.ContentBlockParam) => {
+      // Note: cache_control is intentionally filtered out as OpenAI-compatible APIs don't support it
+      if (item.type === 'text') {
+        textAndImageContent.push({
+          type: 'text' as const,
+          text: item.text || '',
+        });
+      } else if (item.type === 'image') {
+        const source = item.source;
+        if (source && source.type === 'base64') {
+          textAndImageContent.push({
+            type: 'image_url' as const,
+            image_url: {
+              url: `data:${source.media_type};base64,${source.data}`,
+            },
+          });
+        }
+      } else if (item.type === 'tool_use') {
+        toolUseBlocks.push(item);
+      } else if (item.type === 'tool_result') {
+        toolResultBlocks.push(item);
+      }
+    });
+
+    // Handle assistant messages
     if (message.role === 'assistant') {
-      // Assistant messages can only have text content in OpenAI
-      const textContent = content
+      const textContent = textAndImageContent
         .filter(item => item.type === 'text')
         .map(item => item.text)
         .join('\n');
       
-      return {
-        role: 'assistant',
-        content: textContent,
-      };
+      // Convert tool_use blocks to tool_calls
+      const toolCalls = toolUseBlocks.map((toolUse) => ({
+        id: toolUse.id,
+        type: 'function' as const,
+        function: {
+          name: toolUse.name,
+          arguments: JSON.stringify(toolUse.input),
+        },
+      }));
+
+      if (toolCalls.length > 0) {
+        // Assistant message with tool calls
+        results.push({
+          role: 'assistant',
+          content: textContent || null,
+          tool_calls: toolCalls,
+        });
+      } else {
+        // Regular assistant message
+        results.push({
+          role: 'assistant',
+          content: textContent,
+        });
+      }
     } else {
-      return {
-        role: 'user',
-        content,
-      };
+      // Handle user messages
+      // First, add any text/image content as a user message
+      if (textAndImageContent.length > 0) {
+        results.push({
+          role: 'user',
+          content: textAndImageContent.length === 1 && textAndImageContent[0].type === 'text' 
+            ? textAndImageContent[0].text 
+            : textAndImageContent,
+        });
+      }
+
+      // Then, add tool result messages
+      toolResultBlocks.forEach(toolResult => {
+        results.push({
+          role: 'tool',
+          tool_call_id: toolResult.tool_use_id,
+          content: typeof toolResult.content === 'string' 
+            ? toolResult.content 
+            : JSON.stringify(toolResult.content),
+        });
+      });
     }
+
+    return results;
   }
 
   private static translateAnthropicTools(tools: Anthropic.Messages.ToolUnion[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
@@ -223,11 +270,12 @@ export class TranslationService {
         };
       } else {
         // Unknown tool type - create minimal schema
-        console.warn(`Unknown tool type in ToolUnion: ${JSON.stringify(tool)}`);
+        const unknownTool = tool as { name?: string };
+        console.warn(`Unknown tool type in ToolUnion: ${JSON.stringify(unknownTool)}`);
         return {
           type: 'function' as const,
           function: {
-            name: ('name' in tool ? tool.name : 'unknown') || 'unknown',
+            name: unknownTool.name || 'unknown',
             description: 'Unknown tool type',
             parameters: {
               type: 'object',

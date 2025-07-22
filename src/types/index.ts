@@ -18,5 +18,5 @@ export type ContentBlockStopEvent = Anthropic.Messages.ContentBlockStopEvent;
 export type MessageDeltaEvent = Anthropic.Messages.MessageDeltaEvent;
 export type MessageStopEvent = Anthropic.Messages.MessageStopEvent;
 
-// Custom type for tool choice since SDK has more complex structure
+// Re-export tool choice type
 export type AnthropicToolChoice = Anthropic.Messages.ToolChoice;
