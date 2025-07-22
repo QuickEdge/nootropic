@@ -12,6 +12,7 @@ export interface ModelConfig {
     base_url: string;
     api_key: string;
     model_name: string;
+    max_tokens?: number; // Override max tokens for this model
   };
 }
 
@@ -278,7 +279,8 @@ export class ConfigManager {
       config: {
         base_url: '',
         api_key: '',
-        model_name: ''
+        model_name: '',
+        max_tokens: undefined
       }
     };
   }

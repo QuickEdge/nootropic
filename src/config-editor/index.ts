@@ -83,7 +83,8 @@ export class InteractiveConfigEditor {
       prompts.displayName(),
       provider === 'custom' ? prompts.baseUrl(providerConfig.baseUrl) : null,
       prompts.apiKey(providerConfig.name, existingApiKey),
-      prompts.modelName(providerConfig.modelName)
+      prompts.modelName(providerConfig.modelName),
+      prompts.maxTokens()
     ].filter(Boolean));
 
     // Create model configuration
@@ -94,7 +95,8 @@ export class InteractiveConfigEditor {
       config: {
         base_url: modelAnswers.base_url || providerConfig.baseUrl,
         api_key: modelAnswers.api_key || existingApiKey || '',
-        model_name: modelAnswers.model_name
+        model_name: modelAnswers.model_name,
+        max_tokens: modelAnswers.max_tokens
       }
     };
 
@@ -160,6 +162,24 @@ export class InteractiveConfigEditor {
         message: '🤖 Model name:',
         default: model.config?.model_name || '',
         validate: validators.isRequired
+      },
+      {
+        type: 'input',
+        name: 'max_tokens',
+        message: '📊 Max tokens limit (leave empty for no limit):',
+        default: model.config?.max_tokens?.toString() || '',
+        validate: (input: string) => {
+          if (!input.trim()) return true;
+          const num = parseInt(input, 10);
+          if (isNaN(num)) return 'Must be a valid number or empty';
+          if (num < 1) return 'Must be greater than 0';
+          if (num > 100000) return 'Must be less than 100,000';
+          return true;
+        },
+        filter: (input: string) => {
+          const trimmed = input.trim();
+          return trimmed ? parseInt(trimmed, 10) : undefined;
+        }
       }
     ]);
 
@@ -173,7 +193,8 @@ export class InteractiveConfigEditor {
         ...model.config,
         base_url: updates.base_url,
         api_key: updates.api_key || model.config?.api_key || '',
-        model_name: updates.model_name
+        model_name: updates.model_name,
+        max_tokens: updates.max_tokens
       }
     };
 
@@ -228,6 +249,9 @@ export class InteractiveConfigEditor {
         console.log(chalk.gray(`     Provider: ${model.provider}`));
         console.log(chalk.gray(`     Model: ${model.config.model_name}`));
         console.log(chalk.gray(`     Base URL: ${model.config.base_url}`));
+        if (model.config.max_tokens) {
+          console.log(chalk.gray(`     Max Tokens: ${model.config.max_tokens}`));
+        }
         console.log();
       });
     }

@@ -15,17 +15,25 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
   try {
     const request: AnthropicRequest = req.body;
     
-    // Set default max_tokens if not provided (validation middleware ensures it's valid if present)
-    if (!request.max_tokens) {
-      const config = ConfigManager.getInstance();
-      request.max_tokens = config.getConfig().defaults.max_tokens;
-    }
-
     const config = ConfigManager.getInstance();
     const modelConfig = config.getModelConfigWithFallback(request.model);
     
     if (!modelConfig) {
       throw createError(`Model ${request.model} not found`, 400, 'invalid_request_error');
+    }
+
+    // Apply max_tokens logic with model override support
+    if (!request.max_tokens) {
+      // No max_tokens in request, use model override or global default
+      request.max_tokens = modelConfig.config.max_tokens || config.getConfig().defaults.max_tokens;
+    } else if (modelConfig.config.max_tokens && request.max_tokens > modelConfig.config.max_tokens) {
+      // Request max_tokens exceeds model limit, clamp to model limit
+      Logger.warn('Request max_tokens exceeds model limit, clamping', {
+        requested: request.max_tokens,
+        model_limit: modelConfig.config.max_tokens,
+        model: request.model
+      });
+      request.max_tokens = modelConfig.config.max_tokens;
     }
 
     const openAIService = new OpenAIService(modelConfig);
