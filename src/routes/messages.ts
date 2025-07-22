@@ -6,9 +6,7 @@ import { OpenAIService } from '../services/openai';
 import { createError } from '../middleware/error-handler';
 import { validateAnthropicRequest } from '../middleware/request-validation';
 import { ConfigManager } from '../utils/config';
-import { ConversationLogger } from '../services/conversation-logger';
 import { StreamingToolCallState } from '../services/streaming-tool-state';
-import { randomBytes } from 'crypto';
 
 const router = Router();
 
@@ -37,18 +35,13 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      // Set up streaming session for logging
-      const sessionId = randomBytes(16).toString('hex');
-      const logger = ConversationLogger.getInstance();
-      console.log(`Starting streaming session ${sessionId} for model ${request.model}`);
-      logger.startStreamingSession(request, sessionId);
 
       try {
         const streamRequest = openAIRequest as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
         const stream = await openAIService.createChatCompletionStream(streamRequest);
           
         // Create streaming tool call state manager for this session
-        const toolCallState = new StreamingToolCallState(sessionId);
+        const toolCallState = new StreamingToolCallState('stream');
         
         for await (const chunk of stream) {
           try {
@@ -57,9 +50,6 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
             
             // Send each event
             for (const anthropicChunk of anthropicEvents) {
-              // Add chunk to logger in real-time
-              logger.addStreamChunk(sessionId, anthropicChunk);
-              
               res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
             }
           } catch (error) {
@@ -68,18 +58,11 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
           }
         }
 
-        // Finish logging session
-        console.log(`Finishing streaming session ${sessionId}`);
-        logger.finishStreamingSession(sessionId).catch(error => {
-          console.error('Error finishing streaming session log:', error);
-        });
         
         res.write('data: [DONE]\n\n');
         res.end();
 
       } catch (error) {
-        // Clean up logging session on error
-        logger.cleanupStreamingSession(sessionId);
         
         if (error instanceof OpenAI.APIError) {
           console.error('OpenAI API Stream Error:', error.message);
@@ -99,12 +82,6 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
       
       const endTime = Date.now();
       
-      // Log conversation if enabled
-      const logger = ConversationLogger.getInstance();
-      await logger.logConversation(request, anthropicResponse, {
-        requestId: anthropicResponse.id,
-        durationMs: endTime - startTime
-      });
       
       res.json(anthropicResponse);
     }

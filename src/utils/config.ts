@@ -19,12 +19,6 @@ export interface Config {
     enabled: boolean;
     level: 'debug' | 'info' | 'warn' | 'error';
     format: 'json' | 'text';
-    conversation_logging: {
-      enabled: boolean;
-      file_path?: string;
-      include_system_messages: boolean;
-      include_timestamps: boolean;
-    };
   };
   server: {
     port: number;
@@ -60,13 +54,7 @@ const DEFAULT_CONFIG: Config = {
   logging: {
     enabled: true,
     level: 'info',
-    format: 'json',
-    conversation_logging: {
-      enabled: false,
-      file_path: './conversations.log',
-      include_system_messages: true,
-      include_timestamps: true
-    }
+    format: 'json'
   },
   server: {
     port: 3000,
