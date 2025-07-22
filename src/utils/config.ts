@@ -11,7 +11,6 @@ export interface ModelConfig {
     base_url: string;
     api_key: string;
     model_name: string;
-    limit_tool_results?: boolean;
   };
 }
 
@@ -293,8 +292,7 @@ export class ConfigManager {
       config: {
         base_url: '',
         api_key: '',
-        model_name: '',
-        limit_tool_results: false
+        model_name: ''
       }
     };
   }
