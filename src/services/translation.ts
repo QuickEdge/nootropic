@@ -287,6 +287,75 @@ export class TranslationService {
     });
   }
 
+  private static parseMultipleJSONObjects(jsonString: string): unknown {
+    const objects = [];
+    let braceCount = 0;
+    let start = 0;
+    let inString = false;
+    let escapeNext = false;
+    
+    for (let i = 0; i < jsonString.length; i++) {
+      const char = jsonString[i];
+      
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      
+      if (char === '"' && !escapeNext) {
+        inString = !inString;
+        continue;
+      }
+      
+      if (!inString) {
+        if (char === '{') {
+          braceCount++;
+        } else if (char === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            // Found complete object
+            const objStr = jsonString.slice(start, i + 1).trim();
+            if (objStr) {
+              objects.push(JSON.parse(objStr));
+            }
+            start = i + 1;
+          }
+        }
+      }
+    }
+    
+    return objects.length === 1 ? objects[0] : objects;
+  }
+
+  private static safeParseToolArguments(argumentsString: string): unknown {
+    try {
+      // Try normal parsing first
+      return JSON.parse(argumentsString);
+    } catch (error) {
+      console.warn('🔄 Standard JSON parse failed, trying multiple object parsing');
+      try {
+        return this.parseMultipleJSONObjects(argumentsString);
+      } catch (multiError) {
+        console.error('❌ All parsing strategies failed:', {
+          original: (error as Error).message,
+          multiple: (multiError as Error).message,
+          arguments: argumentsString
+        });
+        
+        // Last resort: return raw string
+        return { 
+          raw_arguments: argumentsString, 
+          parse_error: (error as Error).message 
+        };
+      }
+    }
+  }
+
   private static translateAnthropicToolChoice(toolChoice: Anthropic.Messages.ToolChoice | undefined): OpenAI.Chat.Completions.ChatCompletionToolChoiceOption {
     if (!toolChoice) {
       return 'auto';
@@ -337,12 +406,29 @@ export class TranslationService {
 
     if (message.tool_calls) {
       message.tool_calls.forEach(toolCall => {
-        content.push({
-          type: 'tool_use',
+        console.log('🔧 Parsing tool call arguments:', {
           id: toolCall.id,
           name: toolCall.function.name,
-          input: JSON.parse(toolCall.function.arguments),
-        } as Anthropic.Messages.ToolUseBlock);
+          arguments: toolCall.function.arguments
+        });
+        
+        try {
+          const parsedInput = this.safeParseToolArguments(toolCall.function.arguments);
+          content.push({
+            type: 'tool_use',
+            id: toolCall.id,
+            name: toolCall.function.name,
+            input: parsedInput,
+          } as Anthropic.Messages.ToolUseBlock);
+        } catch (error) {
+          console.error('❌ Failed to parse tool call arguments:', {
+            toolId: toolCall.id,
+            toolName: toolCall.function.name,
+            arguments: toolCall.function.arguments,
+            error: (error as Error).message
+          });
+          throw error; // Re-throw to maintain existing behavior
+        }
       });
     }
 
