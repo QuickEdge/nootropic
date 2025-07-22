@@ -210,7 +210,7 @@ export class StreamingToolBatcher extends SimpleToolBatcher {
     }
 
     // Handle completion - but don't send message_stop unless this is the last stream
-    if (choice?.finish_reason && !isLastStream) {
+    if (choice?.finish_reason !== undefined && choice.finish_reason !== null && !isLastStream) {
       // For non-final streams, we might want to send a content_block_stop
       // but not message_stop - that comes at the very end
       console.log(`⏸️ Stream ${this.eventBuffer.streamCount} completed (reason: ${choice.finish_reason})`);

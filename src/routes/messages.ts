@@ -132,7 +132,9 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
       const startTime = Date.now();
       const nonStreamRequest = openAIRequest as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
       const openAIResponse = await openAIService.createChatCompletion(nonStreamRequest);
+      
       const anthropicResponse = TranslationService.openAIToAnthropic(openAIResponse, request.model);
+      
       const endTime = Date.now();
       
       // Log conversation if enabled

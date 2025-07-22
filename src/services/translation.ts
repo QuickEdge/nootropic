@@ -549,7 +549,15 @@ export class TranslationService {
     return this.toolIdMapper.getStats();
   }
 
-  private static translateOpenAIFinishReason(reason: string | undefined): 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' {
+  private static translateOpenAIFinishReason(reason: string | null | undefined): 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' {
+    // In streaming contexts, null finish_reason means "continue streaming"
+    // Only validate for actual string values
+    if (reason === null || reason === undefined) {
+      // Default to 'end_turn' for null/undefined values
+      // This is normal in streaming until the final chunk
+      return 'end_turn';
+    }
+    
     switch (reason) {
       case 'stop':
         return 'end_turn';
@@ -558,6 +566,7 @@ export class TranslationService {
       case 'tool_calls':
         return 'tool_use';
       default:
+        console.warn(`Unknown finish_reason: "${reason}", defaulting to 'end_turn'`);
         return 'end_turn';
     }
   }

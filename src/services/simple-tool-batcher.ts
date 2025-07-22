@@ -66,6 +66,20 @@ export class SimpleToolBatcher {
       throw new Error('No responses to combine');
     }
 
+    // Log any responses with null finish_reason but don't fail
+    for (let i = 0; i < responses.length; i++) {
+      const response = responses[i];
+      const finishReason = response.choices?.[0]?.finish_reason;
+      
+      if (finishReason === null || finishReason === undefined) {
+        console.warn(`⚠️ Response ${i + 1}/${responses.length} has null finish_reason (may be normal):`, {
+          id: response.id,
+          finish_reason: finishReason,
+          content_preview: response.choices?.[0]?.message?.content?.substring(0, 200) + '...'
+        });
+      }
+    }
+
     if (responses.length === 1) {
       return responses[0];
     }
