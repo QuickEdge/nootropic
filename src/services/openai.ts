@@ -1,10 +1,12 @@
 import OpenAI from 'openai';
 import { Stream } from 'openai/streaming';
 import { ModelConfig } from '../utils/config';
+import { SimpleToolBatcher } from './simple-tool-batcher';
 
 export class OpenAIService {
   private client: OpenAI;
   private modelConfig: ModelConfig;
+  private toolBatcher?: SimpleToolBatcher;
 
   constructor(modelConfig: ModelConfig) {
     this.modelConfig = modelConfig;
@@ -18,11 +20,43 @@ export class OpenAIService {
       apiKey: modelConfig.config.api_key,
       timeout: 60000,
     });
+
+    // Initialize simple tool batcher if tool result limiting is enabled
+    if (modelConfig.config.limit_tool_results) {
+      this.toolBatcher = new SimpleToolBatcher(true);
+      console.log(`🔧 Tool result batching enabled for model "${modelConfig.id}" - will send 1 tool result per request`);
+    }
   }
 
   async createChatCompletion(request: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming): Promise<OpenAI.Chat.Completions.ChatCompletion> {
     try {
-      const response = await this.client.chat.completions.create(request);
+      // Use simple tool batcher if available
+      if (this.toolBatcher && this.toolBatcher.needsBatching(request)) {
+        const singleToolRequests = this.toolBatcher.createSingleToolResultRequests(request);
+        const responses: OpenAI.Chat.Completions.ChatCompletion[] = [];
+
+        for (const singleRequest of singleToolRequests) {
+          try {
+            const response = await this.client.chat.completions.create(singleRequest) as OpenAI.Chat.Completions.ChatCompletion;
+            responses.push(response);
+          } catch (error) {
+            // If we get the list index error, try the fallback approach
+            if (this.toolBatcher.isListIndexError(error)) {
+              console.log('⚠️ List index error detected, this should not happen with single tool results');
+              throw error;
+            } else {
+              throw error;
+            }
+          }
+        }
+
+        const combinedResponse = this.toolBatcher.combineSingleToolResponses(responses);
+        console.log(`✅ Combined ${responses.length} single-tool requests successfully`);
+        return combinedResponse;
+      }
+      
+      // Direct API call for models without batching or requests without tool results
+      const response = await this.client.chat.completions.create(request) as OpenAI.Chat.Completions.ChatCompletion;
       return response;
     } catch (error) {
       if (error instanceof OpenAI.APIError) {
@@ -43,6 +77,13 @@ export class OpenAIService {
 
   async createChatCompletionStream(request: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming): Promise<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>> {
     try {
+      // Note: Batching is not yet implemented for streaming requests
+      // This would require more complex handling of streaming responses
+      // For now, fall back to direct API calls for streaming
+      if (this.toolBatcher && this.containsToolResults(request)) {
+        console.log('⚠️ Tool results detected in streaming request - batching not yet supported for streaming');
+      }
+      
       const response = await this.client.chat.completions.create(request);
       return response;
     } catch (error) {
@@ -60,5 +101,12 @@ export class OpenAIService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Checks if a request contains tool results that might need batching
+   */
+  private containsToolResults(request: OpenAI.Chat.Completions.ChatCompletionCreateParams): boolean {
+    return request.messages.some(msg => msg.role === 'tool');
   }
 }

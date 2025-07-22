@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { TranslationService } from './translation';
 
 /**
  * Represents a tool call that's being accumulated across streaming chunks
@@ -51,7 +50,7 @@ export class StreamingToolCallState {
     // Handle completion
     const finishReason = chunk.choices?.[0]?.finish_reason;
     if (finishReason) {
-      const completionEvents = this.handleCompletion(finishReason, chunk);
+      const completionEvents = this.handleCompletion();
       events.push(...completionEvents);
     }
 
@@ -145,7 +144,7 @@ export class StreamingToolCallState {
   /**
    * Handles stream completion and emits final events
    */
-  private handleCompletion(finishReason: string, chunk: OpenAI.Chat.Completions.ChatCompletionChunk): Anthropic.Messages.MessageStreamEvent[] {
+  private handleCompletion(): Anthropic.Messages.MessageStreamEvent[] {
     const events: Anthropic.Messages.MessageStreamEvent[] = [];
 
     // Complete any active tool calls
@@ -164,7 +163,6 @@ export class StreamingToolCallState {
     }
 
     // Emit message_stop
-    const anthropicStopReason = this.translateFinishReason(finishReason);
     events.push({
       type: 'message_stop'
     } as Anthropic.Messages.MessageStopEvent);
