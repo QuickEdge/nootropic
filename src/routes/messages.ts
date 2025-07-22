@@ -8,6 +8,7 @@ import { createError } from '../middleware/error-handler';
 import { validateAnthropicRequest } from '../middleware/request-validation';
 import { ConfigManager } from '../utils/config';
 import { ConversationLogger } from '../services/conversation-logger';
+import { StreamingToolCallState } from '../services/streaming-tool-state';
 import { randomBytes } from 'crypto';
 
 const router = Router();
@@ -47,14 +48,21 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
         const streamRequest = openAIRequest as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
         const stream = await openAIService.createChatCompletionStream(streamRequest);
         
+        // Create streaming tool call state manager for this session
+        const toolCallState = new StreamingToolCallState(sessionId);
+        
         for await (const chunk of stream) {
           try {
-            const anthropicChunk = translateStreamChunk(chunk, request.model);
+            // Use new stateful streaming translation
+            const anthropicEvents = toolCallState.processChunk(chunk);
             
-            // Add chunk to logger in real-time
-            logger.addStreamChunk(sessionId, anthropicChunk);
-            
-            res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
+            // Send each event
+            for (const anthropicChunk of anthropicEvents) {
+              // Add chunk to logger in real-time
+              logger.addStreamChunk(sessionId, anthropicChunk);
+              
+              res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
+            }
           } catch (error) {
             console.error('Error translating stream chunk:', error);
             console.error('Chunk was:', chunk);

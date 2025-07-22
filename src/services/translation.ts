@@ -1,10 +1,31 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { ModelConfig } from '../utils/config';
+import { ToolIdMapper } from './tool-id-mapper';
 
 export class TranslationService {
+  private static toolIdMapper = new ToolIdMapper();
+
   static anthropicToOpenAI(request: Anthropic.Messages.MessageCreateParams, modelConfig: ModelConfig): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming | OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming {
     const { messages, system } = request;
+    
+    // Log conversation summary for tool result flow analysis
+    const toolUseCount = messages.filter(msg => 
+      Array.isArray(msg.content) && msg.content.some(item => item.type === 'tool_use')
+    ).length;
+    const toolResultCount = messages.filter(msg => 
+      Array.isArray(msg.content) && msg.content.some(item => item.type === 'tool_result')
+    ).length;
+    
+    if (toolUseCount > 0 || toolResultCount > 0) {
+      console.log('🔄 Processing conversation with tools:', {
+        total_messages: messages.length,
+        tool_use_messages: toolUseCount,
+        tool_result_messages: toolResultCount,
+        has_system: !!system,
+        has_tools_defined: !!request.tools
+      });
+    }
     
     const openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
     
@@ -116,14 +137,17 @@ export class TranslationService {
         .join('\n');
       
       // Convert tool_use blocks to tool_calls
-      const toolCalls = toolUseBlocks.map((toolUse) => ({
-        id: toolUse.id,
-        type: 'function' as const,
-        function: {
-          name: toolUse.name,
-          arguments: JSON.stringify(toolUse.input),
-        },
-      }));
+      const toolCalls = toolUseBlocks.map((toolUse) => {
+        const openAIId = this.toolIdMapper.mapAnthropicId(toolUse.id);
+        return {
+          id: openAIId,
+          type: 'function' as const,
+          function: {
+            name: toolUse.name,
+            arguments: JSON.stringify(toolUse.input),
+          },
+        };
+      });
 
       if (toolCalls.length > 0) {
         // Assistant message with tool calls
@@ -153,9 +177,27 @@ export class TranslationService {
 
       // Then, add tool result messages
       toolResultBlocks.forEach(toolResult => {
+        // Use hybrid approach: get existing mapping or create new one
+        const { openaiId, wasFound } = this.toolIdMapper.getOrCreateOpenAIId(toolResult.tool_use_id);
+        
+        const logMessage = wasFound ? '🔗 Found existing mapping' : '🆕 Generated new mapping';
+        console.log(`🔧 Translating tool_result block to OpenAI format (${logMessage}):`, {
+          original_tool_use_id: toolResult.tool_use_id,
+          mapped_tool_call_id: openaiId,
+          mapping_status: wasFound ? 'found' : 'generated',
+          content_type: typeof toolResult.content,
+          content_length: typeof toolResult.content === 'string' 
+            ? toolResult.content.length 
+            : JSON.stringify(toolResult.content).length,
+          content_preview: typeof toolResult.content === 'string' 
+            ? toolResult.content.substring(0, 200) + (toolResult.content.length > 200 ? '...' : '')
+            : JSON.stringify(toolResult.content).substring(0, 200) + '...',
+          is_error: toolResult.is_error || false
+        });
+        
         results.push({
           role: 'tool',
-          tool_call_id: toolResult.tool_use_id,
+          tool_call_id: openaiId,
           content: typeof toolResult.content === 'string' 
             ? toolResult.content 
             : JSON.stringify(toolResult.content),
@@ -383,6 +425,15 @@ export class TranslationService {
   static openAIToAnthropic(response: OpenAI.Chat.Completions.ChatCompletion, originalModel: string): Anthropic.Messages.Message {
     console.log('🔍 OpenAI response received:', JSON.stringify(response, null, 2));
     
+    // Check if this response is likely in response to tool results
+    const hasToolResults = response.choices?.[0]?.message?.content && 
+      typeof response.choices[0].message.content === 'string';
+    if (hasToolResults) {
+      console.log('📝 OpenAI response to tool results - content preview:', 
+        response.choices[0].message.content?.substring(0, 300) + 
+        (response.choices[0].message.content && response.choices[0].message.content.length > 300 ? '...' : ''));
+    }
+    
     if (!response.choices || response.choices.length === 0) {
       console.error('❌ OpenAI response structure:', response);
       throw new Error(`OpenAI response has no choices. Response: ${JSON.stringify(response)}`);
@@ -414,9 +465,22 @@ export class TranslationService {
         
         try {
           const parsedInput = this.safeParseToolArguments(toolCall.function.arguments);
+          
+          // Try to map OpenAI tool call ID back to original Anthropic ID
+          const anthropicId = this.toolIdMapper.getAnthropicId(toolCall.id);
+          const finalAnthropicId = anthropicId || toolCall.id; // Fallback to OpenAI ID if no mapping
+          
+          const mappingStatus = anthropicId ? 'found' : 'not_found_using_fallback';
+          console.log('🔄 Restoring Anthropic tool ID:', {
+            openai_id: toolCall.id,
+            anthropic_id: finalAnthropicId,
+            tool_name: toolCall.function.name,
+            mapping_status: mappingStatus
+          });
+          
           content.push({
             type: 'tool_use',
-            id: toolCall.id,
+            id: finalAnthropicId,
             name: toolCall.function.name,
             input: parsedInput,
           } as Anthropic.Messages.ToolUseBlock);
@@ -434,7 +498,7 @@ export class TranslationService {
 
     const stopReason = this.translateOpenAIFinishReason(choice.finish_reason);
 
-    return {
+    const translatedResponse = {
       id: response.id,
       type: 'message',
       role: 'assistant',
@@ -454,6 +518,35 @@ export class TranslationService {
         service_tier: 'standard' as Anthropic.Messages.Usage['service_tier']
       },
     } as Anthropic.Messages.Message;
+
+    // Log final response details for tool result flow analysis
+    const hasTextContent = content.some(block => block.type === 'text');
+    const hasToolUseContent = content.some(block => block.type === 'tool_use');
+    console.log('📤 Returning Anthropic response to Claude Code:', {
+      stop_reason: stopReason,
+      content_blocks: content.length,
+      has_text: hasTextContent,
+      has_tool_use: hasToolUseContent,
+      text_content_length: hasTextContent ? 
+        content.filter((block): block is Anthropic.Messages.TextBlock => block.type === 'text')
+               .map(block => block.text?.length || 0)
+               .reduce((a, b) => a + b, 0) : 0,
+      response_preview: hasTextContent ? 
+        content.filter((block): block is Anthropic.Messages.TextBlock => block.type === 'text')
+               .map(block => block.text)
+               .join(' ')
+               .substring(0, 200) + '...' : 'No text content'
+    });
+
+    return translatedResponse;
+  }
+
+  static clearToolMappings(): void {
+    this.toolIdMapper.clear();
+  }
+
+  static getToolMappingStats(): { mappingCount: number; anthropicIds: string[]; openAIIds: string[] } {
+    return this.toolIdMapper.getStats();
   }
 
   private static translateOpenAIFinishReason(reason: string | undefined): 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' {
