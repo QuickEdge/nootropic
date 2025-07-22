@@ -33,7 +33,29 @@ export class OpenAIService {
         console.error(`Status:`, error.status);
         console.error(`Error:`, error.message);
         console.error(`Type:`, error.type);
-        console.error(`Request Body (preview):`, JSON.stringify(request).slice(0, 500));
+        
+        // Check for the specific list index error and log more details
+        if (error.message && error.message.includes('list index out of range')) {
+          console.error('\n🚨 LIST INDEX OUT OF RANGE ERROR DETECTED:');
+          console.error('Full request body that caused the error:');
+          console.error(JSON.stringify(request, null, 2));
+          
+          // Analyze the request structure
+          const toolResultCount = request.messages.filter(msg => msg.role === 'tool').length;
+          const toolCallCount = request.messages.filter(msg => 
+            msg.role === 'assistant' && 'tool_calls' in msg && msg.tool_calls
+          ).length;
+          
+          console.error('Request analysis:');
+          console.error(`- Total messages: ${request.messages.length}`);
+          console.error(`- Tool result messages: ${toolResultCount}`);
+          console.error(`- Messages with tool calls: ${toolCallCount}`);
+          console.error(`- Model: ${request.model}`);
+          console.error(`- Stream: ${request.stream}`);
+          console.error(`- Tools defined: ${request.tools ? request.tools.length : 0}`);
+        } else {
+          console.error(`Request Body (preview):`, JSON.stringify(request).slice(0, 500));
+        }
         
         throw new Error(`OpenAI API error: ${error.message} (POST ${fullUrl} - ${error.status})`);
       }
@@ -54,7 +76,30 @@ export class OpenAIService {
         console.error(`Status:`, error.status);
         console.error(`Error:`, error.message);
         console.error(`Type:`, error.type);
-        console.error(`Request Body (preview):`, JSON.stringify(request).slice(0, 500));
+        
+        // Check for the specific list index error and log more details
+        if (error.message && error.message.includes('list index out of range')) {
+          console.error('\n🚨 LIST INDEX OUT OF RANGE ERROR DETECTED (STREAMING):');
+          console.error('Full streaming request body that caused the error:');
+          console.error(JSON.stringify(request, null, 2));
+          
+          // Analyze the request structure
+          const toolResultCount = request.messages.filter(msg => msg.role === 'tool').length;
+          const toolCallCount = request.messages.filter(msg => 
+            msg.role === 'assistant' && 'tool_calls' in msg && msg.tool_calls
+          ).length;
+          
+          console.error('Streaming request analysis:');
+          console.error(`- Total messages: ${request.messages.length}`);
+          console.error(`- Tool result messages: ${toolResultCount}`);
+          console.error(`- Messages with tool calls: ${toolCallCount}`);
+          console.error(`- Model: ${request.model}`);
+          console.error(`- Stream: ${request.stream}`);
+          console.error(`- Tools defined: ${request.tools ? request.tools.length : 0}`);
+          console.error(`- Stream options: ${JSON.stringify(request.stream_options)}`);
+        } else {
+          console.error(`Request Body (preview):`, JSON.stringify(request).slice(0, 500));
+        }
         
         throw new Error(`OpenAI API error: ${error.message} (POST ${fullUrl} - ${error.status})`);
       }
