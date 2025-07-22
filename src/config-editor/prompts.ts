@@ -113,19 +113,18 @@ export const prompts = {
   maxTokens: (currentValue?: number): InputQuestion => ({
     type: 'input',
     name: 'max_tokens',
-    message: '📊 Max tokens limit (leave empty for no limit):',
-    default: currentValue?.toString() || '',
+    message: '📊 Max tokens limit (0 for no limit):',
+    default: (currentValue || 0).toString(),
     validate: (input: string) => {
-      if (!input.trim()) return true; // Empty is valid (no limit)
       const num = parseInt(input, 10);
-      if (isNaN(num)) return 'Must be a valid number or empty';
-      if (num < 1) return 'Must be greater than 0';
+      if (isNaN(num)) return 'Must be a valid number';
+      if (num < 0) return 'Must be 0 or greater';
       if (num > 100000) return 'Must be less than 100,000';
       return true;
     },
     filter: (input: string) => {
-      const trimmed = input.trim();
-      return trimmed ? parseInt(trimmed, 10) : undefined;
+      const num = parseInt(input, 10);
+      return num === 0 ? undefined : num;
     }
   }),
 
