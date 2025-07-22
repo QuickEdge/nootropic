@@ -1,3 +1,5 @@
+import { randomBytes } from 'crypto';
+
 /**
  * Manages bidirectional mapping between Anthropic and OpenAI tool IDs
  * to ensure consistent tool call identification across the proxy translation
@@ -5,7 +7,6 @@
 export class ToolIdMapper {
   private anthropicToOpenAI = new Map<string, string>();
   private openAIToAnthropic = new Map<string, string>();
-  private idCounter = 0;
 
   /**
    * Creates a bidirectional mapping between Anthropic and OpenAI tool IDs
@@ -44,10 +45,12 @@ export class ToolIdMapper {
   }
 
   /**
-   * Generates a unique OpenAI-compatible tool call ID
+   * Generates a unique OpenAI-compatible tool call ID using UUID
    */
   generateOpenAIId(): string {
-    return `call_${Date.now()}_${++this.idCounter}`;
+    // Generate a shorter UUID-like ID for tool calls
+    const uuid = randomBytes(8).toString('hex');
+    return `call_${uuid}`;
   }
 
   /**
@@ -112,9 +115,10 @@ export class ToolIdMapper {
       return `call_${anthropicId}`;
     }
     
-    // Fallback: sanitize and prefix
+    // Fallback: sanitize and add UUID
     const sanitized = anthropicId.replace(/[^a-zA-Z0-9_]/g, '_');
-    return `call_${sanitized}_${Date.now() % 10000}`;
+    const uuid = randomBytes(4).toString('hex');
+    return `call_${sanitized}_${uuid}`;
   }
 
   /**
@@ -143,7 +147,6 @@ export class ToolIdMapper {
   clear(): void {
     this.anthropicToOpenAI.clear();
     this.openAIToAnthropic.clear();
-    this.idCounter = 0;
     console.log('🧹 Cleared tool ID mappings');
   }
 
