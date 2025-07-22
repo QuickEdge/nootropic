@@ -115,16 +115,16 @@ export const prompts = {
     name: 'max_tokens',
     message: '📊 Max tokens limit (0 for no limit):',
     default: (currentValue || 0).toString(),
-    validate: (input: string) => {
-      const num = parseInt(input, 10);
+    validate: (input: string | number) => {
+      const num = typeof input === 'number' ? input : parseInt(String(input).trim(), 10);
       if (isNaN(num)) return 'Must be a valid number';
       if (num < 0) return 'Must be 0 or greater';
       if (num > 100000) return 'Must be less than 100,000';
       return true;
     },
-    filter: (input: string) => {
-      const num = parseInt(input, 10);
-      return num === 0 ? undefined : num;
+    filter: (input: string | number) => {
+      const num = typeof input === 'number' ? input : parseInt(String(input).trim(), 10);
+      return (isNaN(num) || num === 0) ? undefined : num;
     }
   }),
 
