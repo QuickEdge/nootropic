@@ -55,7 +55,7 @@ const DEFAULT_CONFIG: Config = {
   logging: {
     enabled: true,
     level: 'info',
-    format: 'json'
+    format: 'text'
   },
   server: {
     port: 3000,
