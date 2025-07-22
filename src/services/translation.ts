@@ -314,7 +314,7 @@ export class TranslationService {
       } else {
         // Unknown tool type - create minimal schema
         const unknownTool = tool as { name?: string };
-        console.warn(`Unknown tool type in ToolUnion: ${JSON.stringify(unknownTool)}`);
+        Logger.warn('Unknown tool type in ToolUnion', { tool: unknownTool });
         return {
           type: 'function' as const,
           function: {
@@ -380,13 +380,13 @@ export class TranslationService {
       // Try normal parsing first
       return JSON.parse(argumentsString);
     } catch (error) {
-      console.warn('🔄 Standard JSON parse failed, trying multiple object parsing');
+      Logger.warn('Standard JSON parse failed, trying multiple object parsing');
       try {
         return this.parseMultipleJSONObjects(argumentsString);
       } catch (multiError) {
-        console.error('❌ All parsing strategies failed:', {
-          original: (error as Error).message,
-          multiple: (multiError as Error).message,
+        Logger.error('All parsing strategies failed', {
+          original_error: (error as Error).message,
+          multiple_error: (multiError as Error).message,
           arguments: argumentsString
         });
         

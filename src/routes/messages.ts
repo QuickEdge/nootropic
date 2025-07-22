@@ -7,6 +7,7 @@ import { createError } from '../middleware/error-handler';
 import { validateAnthropicRequest } from '../middleware/request-validation';
 import { ConfigManager } from '../utils/config';
 import { StreamingToolCallState } from '../services/streaming-tool-state';
+import Logger from '../utils/logger';
 
 const router = Router();
 
@@ -53,8 +54,7 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
               res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
             }
           } catch (error) {
-            console.error('Error translating stream chunk:', error);
-            console.error('Chunk was:', chunk);
+            Logger.error('Error translating stream chunk', { error, chunk });
           }
         }
 
@@ -65,10 +65,10 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
       } catch (error) {
         
         if (error instanceof OpenAI.APIError) {
-          console.error('OpenAI API Stream Error:', error.message);
+          Logger.error('OpenAI API Stream Error', { message: error.message, status: error.status });
           res.write(`data: ${JSON.stringify({ error: `OpenAI API error: ${error.message}` })}\n\n`);
         } else {
-          console.error('Stream error:', error);
+          Logger.error('Stream error', { error });
           res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
         }
         res.end();

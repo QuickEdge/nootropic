@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import Logger from '../utils/logger';
 
 /**
  * Represents a tool call that's being accumulated across streaming chunks
@@ -101,14 +102,14 @@ export class StreamingToolCallState {
 
     // Emit content_block_start if we have enough info and haven't started streaming
     if (!toolCall.hasStartedStreaming && toolCall.name && toolCall.id) {
-      console.log(`🚀 Starting tool call stream for: ${toolCall.name} (index: ${index})`);
+      Logger.debug('Starting tool call stream', { name: toolCall.name, index });
       
       // Generate a consistent Anthropic-style ID that can be mapped back
       const anthropicToolId = `toolu_stream_${chunkId}_${index}`;
       
       // Create mapping between the OpenAI ID and our generated Anthropic ID
       // Note: We reverse the normal mapping here since OpenAI created the ID first
-      console.log(`🔗 Mapping streaming tool IDs: OpenAI ${toolCall.id} → Anthropic ${anthropicToolId}`);
+      Logger.debug('Mapping streaming tool IDs', { openai_id: toolCall.id, anthropic_id: anthropicToolId });
       
       events.push({
         type: 'content_block_start',
@@ -126,7 +127,7 @@ export class StreamingToolCallState {
 
     // Emit input_json_delta if we're streaming and have new arguments
     if (toolCall.hasStartedStreaming && toolCallDelta.function?.arguments) {
-      console.log(`📝 Tool call argument delta for ${toolCall.name}: "${toolCallDelta.function.arguments}"`);
+      Logger.debug('Tool call argument delta', { name: toolCall.name, arguments: toolCallDelta.function.arguments });
       
       events.push({
         type: 'content_block_delta',
@@ -150,8 +151,7 @@ export class StreamingToolCallState {
     // Complete any active tool calls
     for (const [index, toolCall] of this.toolCalls) {
       if (toolCall.hasStartedStreaming && !toolCall.isComplete) {
-        console.log(`✅ Completing tool call: ${toolCall.name} (index: ${index})`);
-        console.log(`📋 Final arguments: ${toolCall.arguments}`);
+        Logger.debug('Completing tool call', { name: toolCall.name, index, final_arguments: toolCall.arguments });
         
         events.push({
           type: 'content_block_stop',
@@ -239,7 +239,7 @@ export class StreamingToolCallState {
   clear(): void {
     this.toolCalls.clear();
     this.hasEmittedMessageStart = false;
-    console.log(`🧹 Cleared streaming tool call state for session ${this.sessionId}`);
+    Logger.debug('Cleared streaming tool call state', { sessionId: this.sessionId });
   }
 
   /**
