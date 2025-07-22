@@ -33,15 +33,21 @@ export class ToolIdMapper {
 
   /**
    * Generates a unique OpenAI-compatible tool call ID
+   * Uses functions.name:index format for provider compatibility
    */
-  generateOpenAIId(): string {
+  generateOpenAIId(toolName?: string): string {
+    if (toolName) {
+      // Use the provider-preferred format: functions.toolname:index
+      return `functions.${toolName}:${this.idCounter++}`;
+    }
+    // Fallback to standard OpenAI format
     return `call_${Date.now()}_${++this.idCounter}`;
   }
 
   /**
    * Maps an Anthropic tool ID to a new OpenAI ID and stores the mapping
    */
-  mapAnthropicId(anthropicId: string): string {
+  mapAnthropicId(anthropicId: string, toolName?: string): string {
     // Check if we already have a mapping for this Anthropic ID
     const existingOpenAIId = this.getOpenAIId(anthropicId);
     if (existingOpenAIId) {
@@ -49,7 +55,7 @@ export class ToolIdMapper {
     }
 
     // Generate new OpenAI ID and create mapping
-    const openAIId = this.generateOpenAIId();
+    const openAIId = this.generateOpenAIId(toolName);
     this.mapIds(anthropicId, openAIId);
     return openAIId;
   }
@@ -71,38 +77,33 @@ export class ToolIdMapper {
    * Used for Claude Code internal tool IDs that don't have existing mappings
    */
   generateOpenAICompatibleId(anthropicId: string): string {
-    // Convert various Anthropic ID formats to OpenAI-compatible format
+    // Convert various Anthropic ID formats to provider-compatible format
     // Handle patterns like: functions.Glob:1, Read:23, 0, toolu_123, etc.
     
     if (anthropicId.startsWith('functions.')) {
-      // functions.Glob:1 → call_func_Glob_1
-      const match = anthropicId.match(/functions\.([^:]+):?(\d*)/);
-      if (match) {
-        const toolName = match[1];
-        const index = match[2] || '0';
-        return `call_func_${toolName}_${index}`;
-      }
+      // functions.Glob:1 → keep as is (already correct format)
+      return anthropicId;
     }
     
     if (anthropicId.includes(':')) {
-      // Read:23 → call_Read_23  
+      // Read:23 → functions.Read:23  
       const [toolName, index] = anthropicId.split(':');
-      return `call_${toolName}_${index || '0'}`;
+      return `functions.${toolName}:${index || '0'}`;
     }
     
     if (/^\d+$/.test(anthropicId)) {
-      // 0 → call_tool_0
-      return `call_tool_${anthropicId}`;
+      // 0 → functions.tool:0
+      return `functions.tool:${anthropicId}`;
     }
     
     if (anthropicId.startsWith('toolu_')) {
-      // toolu_123 → call_toolu_123
-      return `call_${anthropicId}`;
+      // toolu_123 → functions.toolu_123:0
+      return `functions.${anthropicId}:0`;
     }
     
-    // Fallback: sanitize and prefix
+    // Fallback: sanitize and use functions format
     const sanitized = anthropicId.replace(/[^a-zA-Z0-9_]/g, '_');
-    return `call_${sanitized}_${Date.now() % 10000}`;
+    return `functions.${sanitized}:${this.idCounter++}`;
   }
 
   /**

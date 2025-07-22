@@ -27,26 +27,49 @@ export class OpenAIService {
       const hasTools = request.tools && request.tools.length > 0;
       
       if (hasTools || toolResultCount > 0) {
-        console.log('\n📤 OPENAI API REQUEST DETAILS:');
+        console.log('\n📤 COMPLETE REQUEST BEING SENT TO PROVIDER:');
         console.log(`Provider: ${this.modelConfig.config.base_url}`);
         console.log(`Model: ${request.model}`);
-        console.log(`Messages: ${request.messages.length} total`);
-        console.log(`Tool results: ${toolResultCount}`);
         
+        // Log full tool definitions structure
         if (hasTools) {
-          console.log(`\n🔧 Tools defined: ${request.tools!.length}`);
-          request.tools!.forEach((tool, index) => {
-            console.log(`  ${index + 1}. ${tool.function.name}`);
-          });
-          
-          // Warn if there are many tools
-          if (request.tools!.length > 10) {
-            console.warn(`⚠️ WARNING: Sending ${request.tools!.length} tools - some providers may have limits!`);
-          }
-        } else {
-          console.log('\n⚠️ No tools defined in request!');
+          console.log('\n🔧 TOOL DEFINITIONS BEING SENT:');
+          console.log(JSON.stringify(request.tools, null, 2));
         }
-        console.log('---\n');
+        
+        // Log message structure
+        console.log('\n💬 MESSAGE STRUCTURE:');
+        request.messages.forEach((msg, index) => {
+          console.log(`Message ${index + 1}:`);
+          console.log(`  Role: ${msg.role}`);
+          
+          if (msg.role === 'assistant' && 'tool_calls' in msg && msg.tool_calls) {
+            console.log(`  Tool calls: ${msg.tool_calls.length}`);
+            msg.tool_calls.forEach((tc, tcIndex) => {
+              console.log(`    ${tcIndex + 1}. ID: ${tc.id}, Function: ${tc.function.name}`);
+              console.log(`       Args: ${tc.function.arguments.substring(0, 100)}${tc.function.arguments.length > 100 ? '...' : ''}`);
+            });
+          } else if (msg.role === 'tool') {
+            console.log(`  Tool call ID: ${msg.tool_call_id}`);
+            const content = typeof msg.content === 'string' ? msg.content : '[complex content]';
+            console.log(`  Content: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`);
+          } else {
+            const content = typeof msg.content === 'string' ? msg.content : 
+                           Array.isArray(msg.content) ? '[array content]' : '[complex content]';
+            if (typeof content === 'string') {
+              console.log(`  Content: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`);
+            } else {
+              console.log(`  Content: ${content}`);
+            }
+          }
+        });
+        
+        // Summary
+        console.log('\n📊 REQUEST SUMMARY:');
+        console.log(`- Total messages: ${request.messages.length}`);
+        console.log(`- Tool definitions: ${hasTools ? request.tools!.length : 0}`);
+        console.log(`- Tool result messages: ${toolResultCount}`);
+        console.log('='.repeat(80));
       }
       
       // Log the exact request for debugging tool issues
@@ -59,7 +82,7 @@ export class OpenAIService {
               return {
                 role: msg.role,
                 tool_call_id: msg.tool_call_id,
-                content: msg.content?.substring(0, 100) + '...'
+                content: typeof msg.content === 'string' ? msg.content.substring(0, 100) + '...' : '[complex content]'
               };
             } else if (msg.role === 'assistant' && 'tool_calls' in msg) {
               return {
@@ -124,6 +147,24 @@ export class OpenAIService {
 
   async createChatCompletionStream(request: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming): Promise<Stream<OpenAI.Chat.Completions.ChatCompletionChunk>> {
     try {
+      // Log streaming request details  
+      const toolResultCount = request.messages.filter(msg => msg.role === 'tool').length;
+      const hasTools = request.tools && request.tools.length > 0;
+      
+      if (hasTools || toolResultCount > 0) {
+        console.log('\n🌊 STREAMING REQUEST TO PROVIDER:');
+        console.log(`Provider: ${this.modelConfig.config.base_url}`);
+        console.log(`Model: ${request.model}`);
+        
+        if (hasTools) {
+          console.log('\n🔧 STREAMING TOOL DEFINITIONS:');
+          console.log(JSON.stringify(request.tools, null, 2));
+        }
+        
+        console.log(`\n📊 STREAMING SUMMARY: ${request.messages.length} messages, ${hasTools ? request.tools!.length : 0} tools, ${toolResultCount} tool results`);
+        console.log('='.repeat(80));
+      }
+      
       const response = await this.client.chat.completions.create(request);
       return response;
     } catch (error) {
