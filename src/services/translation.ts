@@ -1,10 +1,8 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { ModelConfig } from '../utils/config';
-import { ToolIdMapper } from './tool-id-mapper';
 
 export class TranslationService {
-  private static toolIdMapper = new ToolIdMapper();
 
   static anthropicToOpenAI(request: Anthropic.Messages.MessageCreateParams, modelConfig: ModelConfig): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming | OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming {
     const { messages, system } = request;
@@ -147,12 +145,11 @@ export class TranslationService {
         .map(item => item.text)
         .join('\n');
       
-      // Convert tool_use blocks to tool_calls
+      // Convert tool_use blocks to tool_calls - use original IDs
       const toolCalls = toolUseBlocks.map((toolUse) => {
-        const openAIId = this.toolIdMapper.mapAnthropicId(toolUse.id);
-        console.log(`🆔 Mapping tool use ID: ${toolUse.id} → ${openAIId} (tool: ${toolUse.name})`);
+        console.log(`🆔 Using tool use ID verbatim: ${toolUse.id} (tool: ${toolUse.name})`);
         return {
-          id: openAIId,
+          id: toolUse.id, // Use the original Anthropic ID
           type: 'function' as const,
           function: {
             name: toolUse.name,
@@ -187,29 +184,20 @@ export class TranslationService {
         });
       }
 
-      // Then, add tool result messages
+      // Then, add tool result messages - use original IDs
       toolResultBlocks.forEach(toolResult => {
-        // Use hybrid approach: get existing mapping or create new one
-        const { openaiId, wasFound } = this.toolIdMapper.getOrCreateOpenAIId(toolResult.tool_use_id);
-        
-        const logMessage = wasFound ? '🔗 Found existing mapping' : '🆕 Generated new mapping';
-        console.log(`🔧 Translating tool_result block to OpenAI format (${logMessage}):`, {
+        console.log(`🔧 Translating tool_result block using original ID:`, {
           original_tool_use_id: toolResult.tool_use_id,
-          mapped_tool_call_id: openaiId,
-          mapping_status: wasFound ? 'found' : 'generated',
           content_type: typeof toolResult.content,
           content_length: typeof toolResult.content === 'string' 
             ? toolResult.content.length 
             : JSON.stringify(toolResult.content).length,
-          content_preview: typeof toolResult.content === 'string' 
-            ? toolResult.content.substring(0, 200) + (toolResult.content.length > 200 ? '...' : '')
-            : JSON.stringify(toolResult.content).substring(0, 200) + '...',
           is_error: toolResult.is_error || false
         });
         
         const toolMessage = {
           role: 'tool' as const,
-          tool_call_id: openaiId,
+          tool_call_id: toolResult.tool_use_id, // Use original ID directly
           content: typeof toolResult.content === 'string' 
             ? toolResult.content 
             : JSON.stringify(toolResult.content),
@@ -487,21 +475,14 @@ export class TranslationService {
         try {
           const parsedInput = this.safeParseToolArguments(toolCall.function.arguments);
           
-          // Try to map OpenAI tool call ID back to original Anthropic ID
-          const anthropicId = this.toolIdMapper.getAnthropicId(toolCall.id);
-          const finalAnthropicId = anthropicId || toolCall.id; // Fallback to OpenAI ID if no mapping
-          
-          const mappingStatus = anthropicId ? 'found' : 'not_found_using_fallback';
-          console.log('🔄 Restoring Anthropic tool ID:', {
-            openai_id: toolCall.id,
-            anthropic_id: finalAnthropicId,
-            tool_name: toolCall.function.name,
-            mapping_status: mappingStatus
+          console.log('🔄 Using provider tool ID directly:', {
+            provider_id: toolCall.id,
+            tool_name: toolCall.function.name
           });
           
           content.push({
             type: 'tool_use',
-            id: finalAnthropicId,
+            id: toolCall.id, // Use provider ID directly
             name: toolCall.function.name,
             input: parsedInput,
           } as Anthropic.Messages.ToolUseBlock);
@@ -562,13 +543,6 @@ export class TranslationService {
     return translatedResponse;
   }
 
-  static clearToolMappings(): void {
-    this.toolIdMapper.clear();
-  }
-
-  static getToolMappingStats(): { mappingCount: number; anthropicIds: string[]; openAIIds: string[] } {
-    return this.toolIdMapper.getStats();
-  }
 
   private static translateOpenAIFinishReason(reason: string | null | undefined): 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' {
     // In streaming contexts, null finish_reason means "continue streaming"
