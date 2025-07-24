@@ -5,7 +5,6 @@ import xdgAppPaths from 'xdg-app-paths';
 import Logger from './logger';
 
 export interface ModelConfig {
-  id: string;
   display_name: string;
   provider: string;
   config: {
@@ -38,7 +37,7 @@ export interface Config {
     stream: boolean;
   };
   model_routing: {
-    default_model_id?: string;
+    default_model_display_name?: string;
     route_claude_models_to_default?: boolean;
   };
 }
@@ -65,7 +64,7 @@ const DEFAULT_CONFIG: Config = {
     stream: false
   },
   model_routing: {
-    default_model_id: undefined,
+    default_model_display_name: undefined,
     route_claude_models_to_default: true
   }
 };
@@ -146,22 +145,22 @@ export class ConfigManager {
     return this.config;
   }
 
-  public getModelConfig(modelId: string): ModelConfig | undefined {
-    return this.config.models.find(model => model.id === modelId);
+  public getModelConfig(displayName: string): ModelConfig | undefined {
+    return this.config.models.find(model => model.display_name === displayName);
   }
 
-  public getModelConfigWithFallback(modelId: string): ModelConfig | undefined {
+  public getModelConfigWithFallback(displayName: string): ModelConfig | undefined {
     // First try exact match
-    const exactMatch = this.getModelConfig(modelId);
+    const exactMatch = this.getModelConfig(displayName);
     if (exactMatch) {
       return exactMatch;
     }
     
     // If not found and starts with "claude-" and fallback is enabled
-    if (modelId.startsWith('claude-') && this.config.model_routing?.route_claude_models_to_default) {
-      const defaultModelId = this.getDefaultModel();
-      if (defaultModelId) {
-        return this.getModelConfig(defaultModelId);
+    if (displayName.startsWith('claude-') && this.config.model_routing?.route_claude_models_to_default) {
+      const defaultDisplayName = this.getDefaultModel();
+      if (defaultDisplayName) {
+        return this.getModelConfig(defaultDisplayName);
       }
     }
     
@@ -169,9 +168,9 @@ export class ConfigManager {
   }
 
   public getDefaultModel(): string {
-    // First, check the default_model_id in model_routing section
-    if (this.config.model_routing?.default_model_id) {
-      return this.config.model_routing.default_model_id;
+    // First, check the default_model_display_name in model_routing section
+    if (this.config.model_routing?.default_model_display_name) {
+      return this.config.model_routing.default_model_display_name;
     }
     
     // Fall back to the configured default in defaults section (for backward compatibility)
@@ -179,8 +178,8 @@ export class ConfigManager {
       return this.config.defaults.model;
     }
     
-    // If no default is set anywhere, return the first model's id
-    return this.config.models.length > 0 ? this.config.models[0].id : '';
+    // If no default is set anywhere, return the first model's display_name
+    return this.config.models.length > 0 ? this.config.models[0].display_name : '';
   }
 
   public createConfigDirectory(): void {
@@ -247,7 +246,6 @@ export class ConfigManager {
   
   public getModelDefaults(): ModelConfig {
     return {
-      id: '',
       display_name: '',
       provider: '',
       config: {

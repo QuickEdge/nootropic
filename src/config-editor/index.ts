@@ -16,7 +16,7 @@ export class InteractiveConfigEditor {
     // Ensure model_routing section exists
     if (!this.config.model_routing) {
       this.config.model_routing = {
-        default_model_id: undefined
+        default_model_display_name: undefined
       };
     }
   }
@@ -116,7 +116,7 @@ export class InteractiveConfigEditor {
   private async addModel(): Promise<void> {
     Logger.info('➕ Adding new model...');
 
-    const existingIds = this.config.models.map(m => m.id);
+    const existingDisplayNames = this.config.models.map(m => m.display_name);
 
     // Select provider
     const { provider } = await inquirer.prompt(prompts.providerSelection());
@@ -125,13 +125,19 @@ export class InteractiveConfigEditor {
     // Get existing API key for this provider if available
     const existingApiKey = this.findExistingApiKey(provider);
 
+    // First get the model name
+    const { model_name } = await inquirer.prompt([
+      prompts.modelName(providerConfig.modelName)
+    ]);
+
+    // Generate default display name from model name
+    const defaultDisplayName = this.generateDisplayNameFromModelName(model_name);
+
     // Model configuration
     const basicAnswers = await inquirer.prompt([
-      prompts.modelId(existingIds),
-      prompts.displayName(),
+      prompts.displayName(existingDisplayNames, defaultDisplayName),
       provider === 'custom' ? prompts.baseUrl(providerConfig.baseUrl) : null,
-      prompts.apiKey(providerConfig.name, existingApiKey),
-      prompts.modelName(providerConfig.modelName)
+      prompts.apiKey(providerConfig.name, existingApiKey)
     ].filter(Boolean));
 
     // Use dedicated number prompt for max_tokens
@@ -144,12 +150,12 @@ export class InteractiveConfigEditor {
 
     const modelAnswers = {
       ...basicAnswers,
+      model_name,
       max_tokens: maxTokens === 0 ? undefined : maxTokens
-    } as typeof basicAnswers & { max_tokens: number | undefined };
+    } as typeof basicAnswers & { model_name: string; max_tokens: number | undefined };
 
     // Create model configuration
     const newModel: ModelConfig = {
-      id: modelAnswers.id,
       display_name: modelAnswers.display_name,
       provider: provider === 'custom' ? 'custom' : provider,
       config: {
@@ -163,21 +169,21 @@ export class InteractiveConfigEditor {
     this.config.models.push(newModel);
 
     // If this is the first model, or no default is set, set it as default
-    if (this.config.models.length === 1 || !this.config.model_routing?.default_model_id) {
+    if (this.config.models.length === 1 || !this.config.model_routing?.default_model_display_name) {
       if (!this.config.model_routing) {
         this.config.model_routing = {};
       }
-      this.config.model_routing.default_model_id = newModel.id;
+      this.config.model_routing.default_model_display_name = newModel.display_name;
       if (this.config.models.length === 1) {
-        Logger.info('Set first model as default', { modelId: newModel.id, displayName: newModel.display_name });
+        Logger.info('Set first model as default', { displayName: newModel.display_name });
         Logger.info('⭐ Set as default model (first model added)');
       } else {
-        Logger.info('Set model as default (no default was set)', { modelId: newModel.id, displayName: newModel.display_name });
+        Logger.info('Set model as default (no default was set)', { displayName: newModel.display_name });
         Logger.info('⭐ Set as default model (no default was set)');
       }
     }
 
-    Logger.info('Model added successfully', { modelId: newModel.id, displayName: newModel.display_name, provider: newModel.provider });
+    Logger.info('Model added successfully', { displayName: newModel.display_name, provider: newModel.provider });
     Logger.info(`✅ Model "${newModel.display_name}" added successfully!`);
   }
 
@@ -188,8 +194,8 @@ export class InteractiveConfigEditor {
       return;
     }
 
-    const { modelId } = await inquirer.prompt(prompts.editModelSelection(this.config.models));
-    const modelIndex = this.config.models.findIndex(m => m.id === modelId);
+    const { displayName } = await inquirer.prompt(prompts.editModelSelection(this.config.models));
+    const modelIndex = this.config.models.findIndex(m => m.display_name === displayName);
     const model = this.config.models[modelIndex];
 
     Logger.info(`✏️  Editing model: ${model.display_name}`);
@@ -257,7 +263,7 @@ export class InteractiveConfigEditor {
       }
     };
 
-    Logger.info('Model updated successfully', { modelId: modelId, displayName: updates.display_name });
+    Logger.info('Model updated successfully', { displayName: updates.display_name });
     Logger.info(`✅ Model "${updates.display_name}" updated successfully!`);
   }
 
@@ -268,17 +274,17 @@ export class InteractiveConfigEditor {
       return;
     }
 
-    const { modelId } = await inquirer.prompt(prompts.removeModelSelection(this.config.models));
-    const model = this.config.models.find(m => m.id === modelId)!;
+    const { displayName } = await inquirer.prompt(prompts.removeModelSelection(this.config.models));
+    const model = this.config.models.find(m => m.display_name === displayName)!;
 
     const { confirm } = await inquirer.prompt(prompts.confirmRemoval(model.display_name));
     
     if (confirm) {
-      this.config.models = this.config.models.filter(m => m.id !== modelId);
-      Logger.info('Model removed successfully', { modelId, displayName: model.display_name });
+      this.config.models = this.config.models.filter(m => m.display_name !== displayName);
+      Logger.info('Model removed successfully', { displayName: model.display_name });
       Logger.info(`✅ Model "${model.display_name}" removed successfully!`);
     } else {
-      Logger.info('Model removal cancelled', { modelId, displayName: model.display_name });
+      Logger.info('Model removal cancelled', { displayName: model.display_name });
       Logger.info('❌ Removal cancelled.');
     }
   }
@@ -290,15 +296,15 @@ export class InteractiveConfigEditor {
       return;
     }
 
-    const { modelId } = await inquirer.prompt(prompts.selectDefaultModel(this.config.models, this.config.model_routing?.default_model_id));
+    const { displayName } = await inquirer.prompt(prompts.selectDefaultModel(this.config.models, this.config.model_routing?.default_model_display_name));
     if (!this.config.model_routing) {
       this.config.model_routing = {};
     }
-    this.config.model_routing.default_model_id = modelId;
+    this.config.model_routing.default_model_display_name = displayName;
     
-    const model = this.config.models.find(m => m.id === modelId);
-    Logger.info('Default model updated', { modelId, displayName: model?.display_name });
-    Logger.info(`✅ Default model set to: ${model?.display_name} (${modelId})`);
+    const model = this.config.models.find(m => m.display_name === displayName);
+    Logger.info('Default model updated', { displayName: model?.display_name });
+    Logger.info(`✅ Default model set to: ${model?.display_name}`);
   }
 
   private viewModels(): void {
@@ -308,8 +314,8 @@ export class InteractiveConfigEditor {
       Logger.info('  No models configured');
     } else {
       this.config.models.forEach((model, index) => {
-        const isDefault = model.id === this.config.model_routing?.default_model_id;
-        Logger.info(`  ${index + 1}. ${model.display_name} (${model.id})${isDefault ? ' ⭐ DEFAULT' : ''}`);
+        const isDefault = model.display_name === this.config.model_routing?.default_model_display_name;
+        Logger.info(`  ${index + 1}. ${model.display_name}${isDefault ? ' ⭐ DEFAULT' : ''}`);
         Logger.info(`     Provider: ${model.provider}`);
         Logger.info(`     Model: ${model.config.model_name}`);
         Logger.info(`     Base URL: ${model.config.base_url}`);
@@ -330,8 +336,8 @@ export class InteractiveConfigEditor {
       Logger.info('  No models configured');
     } else {
       this.config.models.forEach((model, index) => {
-        const isDefault = model.id === this.config.model_routing?.default_model_id;
-        Logger.info(`  ${index + 1}. ${model.display_name} (${model.id})${isDefault ? ' ⭐ DEFAULT' : ''}`);
+        const isDefault = model.display_name === this.config.model_routing?.default_model_display_name;
+        Logger.info(`  ${index + 1}. ${model.display_name}${isDefault ? ' ⭐ DEFAULT' : ''}`);
       });
     }
     Logger.info('');
@@ -359,7 +365,7 @@ export class InteractiveConfigEditor {
     Logger.info('');
     
     Logger.info('🔄 Model Routing:');
-    Logger.info(`  Default Model: ${this.config.model_routing?.default_model_id || 'Not set'}`);
+    Logger.info(`  Default Model: ${this.config.model_routing?.default_model_display_name || 'Not set'}`);
     Logger.info(`  Route Claude models to default: ${this.config.model_routing?.route_claude_models_to_default ? 'Yes' : 'No'}`);
     Logger.info('');
   }
@@ -415,6 +421,15 @@ export class InteractiveConfigEditor {
   private findExistingApiKey(provider: string): string | undefined {
     const providerModel = this.config.models.find(m => m.provider === provider);
     return providerModel?.config.api_key;
+  }
+
+  private generateDisplayNameFromModelName(modelName: string): string {
+    // If model name contains '/', use everything after the last '/'
+    if (modelName.includes('/')) {
+      return modelName.split('/').pop() || modelName;
+    }
+    // Otherwise use the full model name
+    return modelName;
   }
 
   private async editServerSettings(): Promise<void> {

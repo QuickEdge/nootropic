@@ -52,8 +52,8 @@ app.listen(port, config.server.host, () => {
   if (config.models.length > 0) {
     Logger.info('Available models:', {
       models: config.models.map(model => {
-        const isDefault = model.id === defaultModelId;
-        return `${model.id} (${model.display_name})${isDefault ? ' [DEFAULT]' : ''}`;
+        const isDefault = model.display_name === defaultModelId;
+        return `${model.display_name}${isDefault ? ' [DEFAULT]' : ''}`;
       })
     });
   }

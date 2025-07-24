@@ -62,24 +62,18 @@ export const prompts = {
     ]
   }),
 
-  modelId: (existingIds: string[] = []): InputQuestion => ({
+  displayName: (existingDisplayNames: string[] = [], defaultValue?: string): InputQuestion => ({
     type: 'input',
-    name: 'id',
-    message: '🆔 Model ID (unique identifier):',
+    name: 'display_name',
+    message: '📝 Display name (unique identifier):',
+    default: defaultValue,
     validate: (input: string) => {
       const required = validators.isRequired(input);
       if (required !== true) return required;
-      const unique = validators.isUniqueModelId(existingIds)(input);
+      const unique = validators.isUniqueDisplayName(existingDisplayNames)(input);
       if (unique !== true) return unique;
-      return validators.isValidModelId(input);
+      return true;
     }
-  }),
-
-  displayName: (): InputQuestion => ({
-    type: 'input',
-    name: 'display_name',
-    message: '📝 Display name (human-readable):',
-    validate: validators.isRequired
   }),
 
   baseUrl: (defaultUrl: string): InputQuestion => ({
@@ -110,23 +104,23 @@ export const prompts = {
   }),
 
 
-  editModelSelection: (models: Array<{ id: string; display_name: string }>): ListQuestion => ({
+  editModelSelection: (models: Array<{ display_name: string }>): ListQuestion => ({
     type: 'list',
-    name: 'modelId',
+    name: 'displayName',
     message: '✏️  Select a model to edit:',
     choices: models.map(model => ({
-      name: `${model.display_name} (${model.id})`,
-      value: model.id
+      name: model.display_name,
+      value: model.display_name
     }))
   }),
 
-  removeModelSelection: (models: Array<{ id: string; display_name: string }>): ListQuestion => ({
+  removeModelSelection: (models: Array<{ display_name: string }>): ListQuestion => ({
     type: 'list',
-    name: 'modelId',
+    name: 'displayName',
     message: '🗑️  Select a model to remove:',
     choices: models.map(model => ({
-      name: `${model.display_name} (${model.id})`,
-      value: model.id
+      name: model.display_name,
+      value: model.display_name
     }))
   }),
 
@@ -137,13 +131,13 @@ export const prompts = {
     default: false
   }),
   
-  selectDefaultModel: (models: Array<{ id: string; display_name: string }>, currentDefault?: string): ListQuestion => ({
+  selectDefaultModel: (models: Array<{ display_name: string }>, currentDefault?: string): ListQuestion => ({
     type: 'list',
-    name: 'modelId',
+    name: 'displayName',
     message: '⭐ Select the default model:',
     choices: models.map(model => ({
-      name: `${model.display_name} (${model.id})${model.id === currentDefault ? ' [current]' : ''}`,
-      value: model.id
+      name: `${model.display_name}${model.display_name === currentDefault ? ' [current]' : ''}`,
+      value: model.display_name
     }))
   }),
 

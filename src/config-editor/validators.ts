@@ -25,20 +25,10 @@ export const validators = {
     return true;
   },
 
-  isValidModelId: (input: string): boolean | string => {
-    if (!input || input.trim() === '') {
-      return 'Model ID is required.';
-    }
-    if (!/^[a-zA-Z0-9_-]+$/.test(input)) {
-      return 'Model ID can only contain letters, numbers, hyphens, and underscores.';
-    }
-    return true;
-  },
-
-  isUniqueModelId: (existingIds: string[]) => {
+  isUniqueDisplayName: (existingDisplayNames: string[]) => {
     return (input: string): boolean | string => {
-      if (existingIds.includes(input)) {
-        return 'A model with this ID already exists. Please choose a different ID.';
+      if (existingDisplayNames.includes(input)) {
+        return 'A model with this display name already exists. Please choose a different name.';
       }
       return true;
     };

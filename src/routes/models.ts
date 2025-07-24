@@ -10,12 +10,12 @@ router.get('/', (req, res) => {
     data: config.models.map(model => ({
       created_at: new Date().toISOString(),
       display_name: model.display_name,
-      id: model.id,
+      id: model.display_name,
       type: 'model' as const
     })),
-    first_id: config.models[0]?.id || null,
+    first_id: config.models[0]?.display_name || null,
     has_more: false,
-    last_id: config.models[config.models.length - 1]?.id || null
+    last_id: config.models[config.models.length - 1]?.display_name || null
   };
 
   res.json(modelsResponse);
@@ -50,7 +50,7 @@ router.get('/default', (req, res) => {
   const modelResponse = {
     created_at: new Date().toISOString(),
     display_name: model.display_name,
-    id: model.id,
+    id: model.display_name,
     type: 'model' as const
   };
 
@@ -74,7 +74,7 @@ router.get('/:model', (req, res) => {
   const modelResponse = {
     created_at: new Date().toISOString(),
     display_name: model.display_name,
-    id: model.id,
+    id: model.display_name,
     type: 'model' as const
   };
 
