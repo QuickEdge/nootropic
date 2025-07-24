@@ -1,9 +1,9 @@
 import inquirer from 'inquirer';
-import chalk from 'chalk';
 import numberPrompt from '@inquirer/number';
 import { Config, ModelConfig, ConfigManager } from '../utils/config';
 import { prompts, PROVIDERS } from './prompts';
 import { validators } from './validators';
+import Logger from '../utils/logger';
 
 export class InteractiveConfigEditor {
   private config: Config;
@@ -22,7 +22,7 @@ export class InteractiveConfigEditor {
   }
 
   async run(): Promise<void> {
-    console.log(chalk.blue.bold('\n🚀 Nootropic Interactive Config Editor\n'));
+    Logger.info('🚀 Nootropic Interactive Config Editor');
     
     // Config is already loaded via ConfigManager in constructor
     const configManager = ConfigManager.getInstance(true);
@@ -31,20 +31,39 @@ export class InteractiveConfigEditor {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
-        const { action } = await inquirer.prompt(prompts.mainMenu());
+        const { action } = await inquirer.prompt([{
+          type: 'list',
+          name: 'action',
+          message: '🎯 What would you like to configure?',
+          choices: [
+            { name: '🤖 Models', value: 'models' },
+            { name: '⚙️  Server Settings', value: 'server' },
+            { name: '📋 Logging', value: 'logging' },
+            { name: '🎨 Defaults', value: 'defaults' },
+            { name: '🔄 Model Routing', value: 'model_routing' },
+            new inquirer.Separator(),
+            { name: '👁️  View All Config', value: 'view' },
+            { name: '💾 Save & Exit', value: 'save' },
+            { name: '❌ Exit Without Saving', value: 'exit' }
+          ],
+          pageSize: 10
+        }]);
         
         switch (action) {
-          case 'add':
-            await this.addModel();
+          case 'models':
+            await this.editModels();
             break;
-          case 'edit':
-            await this.editModel();
+          case 'server':
+            await this.editServerSettings();
             break;
-          case 'remove':
-            await this.removeModel();
+          case 'logging':
+            await this.editLogging();
             break;
-          case 'setDefault':
-            await this.setDefaultModel();
+          case 'defaults':
+            await this.editDefaults();
+            break;
+          case 'model_routing':
+            await this.editModelRouting();
             break;
           case 'view':
             this.viewConfig();
@@ -58,16 +77,44 @@ export class InteractiveConfigEditor {
         }
       } catch (error) {
         if (error === 'exit') {
-          console.log(chalk.yellow('\n👋 Goodbye!'));
+          Logger.info('Config editor exiting - Goodbye! 👋');
           return;
         }
-        console.error(chalk.red('\n❌ Error:'), error);
+        Logger.error('Config editor error', { error });
+        Logger.error('Config editor operation failed', { error });
+      }
+    }
+  }
+
+  private async editModels(): Promise<void> {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { action } = await inquirer.prompt(prompts.mainMenu());
+      
+      switch (action) {
+        case 'add':
+          await this.addModel();
+          break;
+        case 'edit':
+          await this.editModel();
+          break;
+        case 'remove':
+          await this.removeModel();
+          break;
+        case 'setDefault':
+          await this.setDefaultModel();
+          break;
+        case 'view':
+          this.viewModels();
+          break;
+        case 'back':
+          return;
       }
     }
   }
 
   private async addModel(): Promise<void> {
-    console.log(chalk.green('\n➕ Adding new model...\n'));
+    Logger.info('➕ Adding new model...');
 
     const existingIds = this.config.models.map(m => m.id);
 
@@ -122,18 +169,22 @@ export class InteractiveConfigEditor {
       }
       this.config.model_routing.default_model_id = newModel.id;
       if (this.config.models.length === 1) {
-        console.log(chalk.yellow(`⭐ Set as default model (first model added)\n`));
+        Logger.info('Set first model as default', { modelId: newModel.id, displayName: newModel.display_name });
+        Logger.info('⭐ Set as default model (first model added)');
       } else {
-        console.log(chalk.yellow(`⭐ Set as default model (no default was set)\n`));
+        Logger.info('Set model as default (no default was set)', { modelId: newModel.id, displayName: newModel.display_name });
+        Logger.info('⭐ Set as default model (no default was set)');
       }
     }
 
-    console.log(chalk.green(`\n✅ Model "${newModel.display_name}" added successfully!\n`));
+    Logger.info('Model added successfully', { modelId: newModel.id, displayName: newModel.display_name, provider: newModel.provider });
+    Logger.info(`✅ Model "${newModel.display_name}" added successfully!`);
   }
 
   private async editModel(): Promise<void> {
     if (this.config.models.length === 0) {
-      console.log(chalk.yellow('\n⚠️  No models to edit.\n'));
+      Logger.warn('No models available to edit');
+      Logger.warn('⚠️  No models to edit.');
       return;
     }
 
@@ -141,7 +192,7 @@ export class InteractiveConfigEditor {
     const modelIndex = this.config.models.findIndex(m => m.id === modelId);
     const model = this.config.models[modelIndex];
 
-    console.log(chalk.blue(`\n✏️  Editing model: ${model.display_name}\n`));
+    Logger.info(`✏️  Editing model: ${model.display_name}`);
 
 
     const basicUpdates = await inquirer.prompt([
@@ -206,12 +257,14 @@ export class InteractiveConfigEditor {
       }
     };
 
-    console.log(chalk.green(`\n✅ Model "${updates.display_name}" updated successfully!\n`));
+    Logger.info('Model updated successfully', { modelId: modelId, displayName: updates.display_name });
+    Logger.info(`✅ Model "${updates.display_name}" updated successfully!`);
   }
 
   private async removeModel(): Promise<void> {
     if (this.config.models.length === 0) {
-      console.log(chalk.yellow('\n⚠️  No models to remove.\n'));
+      Logger.warn('No models available to remove');
+      Logger.warn('⚠️  No models to remove.');
       return;
     }
 
@@ -222,15 +275,18 @@ export class InteractiveConfigEditor {
     
     if (confirm) {
       this.config.models = this.config.models.filter(m => m.id !== modelId);
-      console.log(chalk.green(`\n✅ Model "${model.display_name}" removed successfully!\n`));
+      Logger.info('Model removed successfully', { modelId, displayName: model.display_name });
+      Logger.info(`✅ Model "${model.display_name}" removed successfully!`);
     } else {
- console.log(chalk.yellow('\n❌ Removal cancelled.\n'));
+      Logger.info('Model removal cancelled', { modelId, displayName: model.display_name });
+      Logger.info('❌ Removal cancelled.');
     }
   }
 
   private async setDefaultModel(): Promise<void> {
     if (this.config.models.length === 0) {
-      console.log(chalk.yellow('\n⚠️  No models available to set as default.\n'));
+      Logger.warn('No models available to set as default');
+      Logger.warn('⚠️  No models available to set as default.');
       return;
     }
 
@@ -241,28 +297,71 @@ export class InteractiveConfigEditor {
     this.config.model_routing.default_model_id = modelId;
     
     const model = this.config.models.find(m => m.id === modelId);
-    console.log(chalk.green(`\n✅ Default model set to: ${model?.display_name} (${modelId})\n`));
+    Logger.info('Default model updated', { modelId, displayName: model?.display_name });
+    Logger.info(`✅ Default model set to: ${model?.display_name} (${modelId})`);
   }
 
-  private viewConfig(): void {
-    console.log(chalk.blue.bold('\n📋 Current Configuration\n'));
-    console.log(chalk.cyan('Models:'));
+  private viewModels(): void {
+    Logger.info('🤖 Models Configuration');
     
     if (this.config.models.length === 0) {
-      console.log(chalk.gray('  No models configured'));
+      Logger.info('  No models configured');
     } else {
       this.config.models.forEach((model, index) => {
         const isDefault = model.id === this.config.model_routing?.default_model_id;
-        console.log(chalk.white(`  ${index + 1}. ${model.display_name} (${model.id})${isDefault ? chalk.yellow(' ⭐ DEFAULT') : ''}`));
-        console.log(chalk.gray(`     Provider: ${model.provider}`));
-        console.log(chalk.gray(`     Model: ${model.config.model_name}`));
-        console.log(chalk.gray(`     Base URL: ${model.config.base_url}`));
+        Logger.info(`  ${index + 1}. ${model.display_name} (${model.id})${isDefault ? ' ⭐ DEFAULT' : ''}`);
+        Logger.info(`     Provider: ${model.provider}`);
+        Logger.info(`     Model: ${model.config.model_name}`);
+        Logger.info(`     Base URL: ${model.config.base_url}`);
         if (model.config.max_tokens) {
-          console.log(chalk.gray(`     Max Tokens: ${model.config.max_tokens}`));
+          Logger.info(`     Max Tokens: ${model.config.max_tokens}`);
         }
-        console.log();
+        Logger.info('');
       });
     }
+  }
+
+  private viewConfig(): void {
+    Logger.info('📋 Current Configuration');
+    Logger.info('');
+    
+    Logger.info('🤖 Models:');
+    if (this.config.models.length === 0) {
+      Logger.info('  No models configured');
+    } else {
+      this.config.models.forEach((model, index) => {
+        const isDefault = model.id === this.config.model_routing?.default_model_id;
+        Logger.info(`  ${index + 1}. ${model.display_name} (${model.id})${isDefault ? ' ⭐ DEFAULT' : ''}`);
+      });
+    }
+    Logger.info('');
+    
+    Logger.info('⚙️  Server:');
+    Logger.info(`  Host: ${this.config.server.host}`);
+    Logger.info(`  Port: ${this.config.server.port}`);
+    Logger.info(`  CORS: ${this.config.server.cors.enabled ? 'Enabled' : 'Disabled'}`);
+    if (this.config.server.cors.enabled) {
+      Logger.info(`  Allowed Origins: ${this.config.server.cors.origins.join(', ')}`);
+    }
+    Logger.info('');
+    
+    Logger.info('📋 Logging:');
+    Logger.info(`  Enabled: ${this.config.logging.enabled ? 'Yes' : 'No'}`);
+    Logger.info(`  Level: ${this.config.logging.level}`);
+    Logger.info(`  Format: ${this.config.logging.format}`);
+    Logger.info('');
+    
+    Logger.info('🎨 Defaults:');
+    Logger.info(`  Model: ${this.config.defaults.model || 'Not set'}`);
+    Logger.info(`  Max Tokens: ${this.config.defaults.max_tokens}`);
+    Logger.info(`  Temperature: ${this.config.defaults.temperature}`);
+    Logger.info(`  Stream: ${this.config.defaults.stream ? 'Yes' : 'No'}`);
+    Logger.info('');
+    
+    Logger.info('🔄 Model Routing:');
+    Logger.info(`  Default Model: ${this.config.model_routing?.default_model_id || 'Not set'}`);
+    Logger.info(`  Route Claude models to default: ${this.config.model_routing?.route_claude_models_to_default ? 'Yes' : 'No'}`);
+    Logger.info('');
   }
 
   private async saveAndExit(): Promise<void> {
@@ -273,13 +372,16 @@ export class InteractiveConfigEditor {
         const configManager = ConfigManager.getInstance(true);
         configManager.updateConfig(this.config);
         configManager.saveConfig();
-        console.log(chalk.green('\n✅ Configuration saved successfully!\n'));
+        Logger.info('Configuration saved successfully', { configPath: this.configPath });
+        Logger.info('✅ Configuration saved successfully!');
       } catch (error) {
-        console.error(`❌ Failed to save configuration:`, error);
+        Logger.error('Failed to save configuration', { error, configPath: this.configPath });
+        Logger.error('❌ Failed to save configuration:', { error });
         throw error;
       }
     } else {
-      console.log(chalk.yellow('\n❌ Changes discarded.\n'));
+      Logger.info('Configuration changes discarded');
+      Logger.info('❌ Changes discarded.');
     }
   }
 
@@ -291,15 +393,18 @@ export class InteractiveConfigEditor {
                       JSON.stringify(this.config.models) !== JSON.stringify(originalConfig.models);
 
     if (hasChanges) {
-      console.log(chalk.yellow('\n⚠️  You have unsaved changes!\n'));
+      Logger.warn('Exiting with unsaved changes');
+      Logger.warn('⚠️  You have unsaved changes!');
       const { save } = await inquirer.prompt(prompts.saveChanges());
       if (save) {
         try {
           configManager.updateConfig(this.config);
           configManager.saveConfig();
-          console.log(chalk.green('\n✅ Configuration saved successfully!\n'));
+          Logger.info('Configuration saved on exit', { configPath: this.configPath });
+          Logger.info('✅ Configuration saved successfully!');
         } catch (error) {
-          console.error(`❌ Failed to save configuration:`, error);
+          Logger.error('Failed to save configuration on exit', { error, configPath: this.configPath });
+          Logger.error('❌ Failed to save configuration:', { error });
           throw error;
         }
       }
@@ -310,5 +415,141 @@ export class InteractiveConfigEditor {
   private findExistingApiKey(provider: string): string | undefined {
     const providerModel = this.config.models.find(m => m.provider === provider);
     return providerModel?.config.api_key;
+  }
+
+  private async editServerSettings(): Promise<void> {
+    Logger.info('⚙️  Editing Server Settings');
+    
+    const updates = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'host',
+        message: '🌐 Host:',
+        default: this.config.server.host,
+        validate: validators.isRequired
+      },
+      {
+        type: 'number',
+        name: 'port',
+        message: '🔌 Port:',
+        default: this.config.server.port,
+        validate: (input: number) => {
+          if (input < 1 || input > 65535) {
+            return 'Port must be between 1 and 65535';
+          }
+          return true;
+        }
+      },
+      {
+        type: 'confirm',
+        name: 'cors_enabled',
+        message: '🔒 Enable CORS?',
+        default: this.config.server.cors.enabled
+      }
+    ]);
+
+    this.config.server.host = updates.host;
+    this.config.server.port = updates.port;
+    this.config.server.cors.enabled = updates.cors_enabled;
+
+    if (updates.cors_enabled) {
+      const { origins } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'origins',
+          message: '🌍 Allowed origins (comma-separated):',
+          default: this.config.server.cors.origins.join(', '),
+          filter: (input: string) => input.split(',').map(o => o.trim()).filter(o => o)
+        }
+      ]);
+      this.config.server.cors.origins = origins;
+    }
+
+    Logger.info('✅ Server settings updated!');
+  }
+
+  private async editLogging(): Promise<void> {
+    Logger.info('📋 Editing Logging Settings');
+    
+    const updates = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'enabled',
+        message: '📝 Enable logging?',
+        default: this.config.logging.enabled
+      },
+      {
+        type: 'list',
+        name: 'level',
+        message: '🎚️  Log level:',
+        choices: ['debug', 'info', 'warn', 'error'],
+        default: this.config.logging.level
+      },
+      {
+        type: 'list',
+        name: 'format',
+        message: '📄 Log format:',
+        choices: ['json', 'text'],
+        default: this.config.logging.format
+      }
+    ]);
+
+    this.config.logging = updates;
+    Logger.info('✅ Logging settings updated!');
+  }
+
+  private async editDefaults(): Promise<void> {
+    Logger.info('🎨 Editing Default Settings');
+    
+    const maxTokens = await numberPrompt({
+      message: '📊 Default max tokens:',
+      default: this.config.defaults.max_tokens,
+      min: 1,
+      max: 100000
+    });
+
+    const temperature = await numberPrompt({
+      message: '🌡️  Default temperature:',
+      default: this.config.defaults.temperature,
+      min: 0,
+      max: 2,
+      step: 0.1
+    });
+
+    const stream = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'stream',
+        message: '🌊 Default to streaming?',
+        default: this.config.defaults.stream
+      }
+    ]);
+
+    this.config.defaults.max_tokens = maxTokens || 4096;
+    this.config.defaults.temperature = temperature || 0.7;
+    this.config.defaults.stream = stream.stream;
+
+    Logger.info('✅ Default settings updated!');
+  }
+
+
+  private async editModelRouting(): Promise<void> {
+    Logger.info('🔄 Editing Model Routing');
+    
+    const { route_claude_models } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'route_claude_models',
+        message: '🔀 Route Claude model requests to default model?',
+        default: this.config.model_routing?.route_claude_models_to_default ?? true
+      }
+    ]);
+
+    if (!this.config.model_routing) {
+      this.config.model_routing = {};
+    }
+    this.config.model_routing.route_claude_models_to_default = route_claude_models;
+
+    Logger.info('✅ Model routing updated!');
   }
 }

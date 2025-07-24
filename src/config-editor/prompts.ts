@@ -45,9 +45,8 @@ export const prompts = {
       { name: '✏️  Edit existing model', value: 'edit' },
       { name: '🗑️  Remove model', value: 'remove' },
       { name: '⭐ Set default model', value: 'setDefault' },
-      { name: '👀 View current config', value: 'view' },
-      { name: '💾 Save and exit', value: 'save' },
-      { name: '🚪 Exit without saving', value: 'exit' }
+      { name: '👀 View models', value: 'view' },
+      { name: '🔙 Back to main menu', value: 'back' }
     ]
   }),
 

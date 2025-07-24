@@ -37,15 +37,6 @@ export interface Config {
     temperature: number;
     stream: boolean;
   };
-  rate_limits: {
-    requests_per_minute: number;
-    tokens_per_minute: number;
-  };
-  cache: {
-    enabled: boolean;
-    ttl: number;
-    max_size: number;
-  };
   model_routing: {
     default_model_id?: string;
     route_claude_models_to_default?: boolean;
@@ -72,15 +63,6 @@ const DEFAULT_CONFIG: Config = {
     max_tokens: 4096,
     temperature: 0.7,
     stream: false
-  },
-  rate_limits: {
-    requests_per_minute: 60,
-    tokens_per_minute: 100000
-  },
-  cache: {
-    enabled: false,
-    ttl: 300,
-    max_size: 1000
   },
   model_routing: {
     default_model_id: undefined,
@@ -151,14 +133,6 @@ export class ConfigManager {
       defaults: { 
         ...DEFAULT_CONFIG.defaults, 
         ...(userConfig.defaults || {})
-      },
-      rate_limits: { 
-        ...DEFAULT_CONFIG.rate_limits, 
-        ...(userConfig.rate_limits || {})
-      },
-      cache: { 
-        ...DEFAULT_CONFIG.cache, 
-        ...(userConfig.cache || {})
       },
       models: userConfig.models || DEFAULT_CONFIG.models,
       model_routing: {
@@ -255,7 +229,7 @@ export class ConfigManager {
     const diffResult: TOML.JsonMap = {};
     
     // Handle non-array sections with just-diff
-    const sections = ['logging', 'server', 'defaults', 'rate_limits', 'cache', 'model_routing'] as const;
+    const sections = ['logging', 'server', 'defaults', 'model_routing'] as const;
     for (const section of sections) {
       const sectionDiff = diff(DEFAULT_CONFIG[section], this.config[section]);
       if (sectionDiff.length > 0) {
