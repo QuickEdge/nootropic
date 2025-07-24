@@ -1,7 +1,6 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Logger from '../utils/logger';
-import { estimateTokens, estimateMessagesTokens, estimateSystemTokens } from '../utils/token-estimator';
 
 /**
  * Represents a tool call that's being accumulated across streaming chunks
@@ -23,15 +22,9 @@ export class StreamingToolCallState {
   private toolCalls: Map<number, AccumulatingToolCall> = new Map();
   private hasEmittedMessageStart = false;
   private sessionId: string;
-  private cumulativeUsage: { input_tokens: number; output_tokens: number } = {
-    input_tokens: 0,
-    output_tokens: 0
-  };
+  private actualUsage: { input_tokens: number; output_tokens: number } | null = null;
   private requestModel: string = 'claude-3-5-sonnet-20241022'; // Default, should be set from request
-  private accumulatedContent: string = '';
   private estimatedInputTokens: number = 0;
-  private inputTokensReported: number = 0;
-  private totalChunksSeen: number = 0;
   private hasEmittedContentBlockStart = false;
   private contentBlockIndex = 0;
 
@@ -45,74 +38,40 @@ export class StreamingToolCallState {
       this.requestModel = requestModel;
     }
     
-    // Estimate input tokens from the request
+    // Simple input token estimation for message_start
     if (anthropicRequest) {
-      this.estimatedInputTokens = this.estimateRequestTokens(anthropicRequest);
-      // Start with 0 input tokens - we'll gradually accumulate them
-      this.cumulativeUsage.input_tokens = 0;
-      this.inputTokensReported = 0;
+      // Rough estimate: count all text content and divide by 4
+      let totalLength = 0;
       
-      Logger.debug('Estimated input tokens for streaming', {
+      // System prompt
+      if (anthropicRequest.system) {
+        totalLength += anthropicRequest.system.length;
+      }
+      
+      // Messages
+      for (const msg of anthropicRequest.messages) {
+        if (typeof msg.content === 'string') {
+          totalLength += msg.content.length;
+        } else if (Array.isArray(msg.content)) {
+          for (const block of msg.content) {
+            if (block.type === 'text') {
+              totalLength += block.text.length;
+            }
+          }
+        }
+      }
+      
+      // Simple estimation: ~4 characters per token
+      this.estimatedInputTokens = Math.ceil(totalLength / 4);
+      
+      Logger.debug('Simple input token estimation', {
+        total_text_length: totalLength,
         estimated_tokens: this.estimatedInputTokens,
         messages_count: anthropicRequest.messages.length,
         has_system: !!anthropicRequest.system,
-        will_accumulate_gradually: true,
         session: this.sessionId
       });
     }
-  }
-  
-  /**
-   * Estimate total input tokens from the Anthropic request
-   */
-  private estimateRequestTokens(request: Anthropic.Messages.MessageCreateParams): number {
-    let tokens = 0;
-    
-    // System prompt tokens
-    if (request.system) {
-      tokens += estimateSystemTokens(request.system);
-    }
-    
-    // Message tokens
-    tokens += estimateMessagesTokens(request.messages);
-    
-    // Add some overhead for request formatting
-    tokens += 10;
-    
-    return tokens;
-  }
-
-  /**
-   * Gradually increment input tokens to simulate real-time token accumulation
-   */
-  private getIncrementalInputTokens(): number {
-    // Gradually increase input tokens over the first few chunks
-    const maxInputChunks = 5; // Spread input token reporting over first 5 chunks
-    
-    if (this.totalChunksSeen < maxInputChunks && this.estimatedInputTokens > 0) {
-      // Calculate how many tokens to add this chunk
-      const tokensPerChunk = Math.ceil(this.estimatedInputTokens / maxInputChunks);
-      const targetTokens = Math.min(
-        this.inputTokensReported + tokensPerChunk,
-        this.estimatedInputTokens
-      );
-      
-      this.inputTokensReported = targetTokens;
-      this.cumulativeUsage.input_tokens = targetTokens;
-      
-      Logger.debug('Incrementally reporting input tokens', {
-        chunk_number: this.totalChunksSeen + 1,
-        tokens_this_chunk: targetTokens - (this.inputTokensReported - tokensPerChunk),
-        total_reported: targetTokens,
-        estimated_total: this.estimatedInputTokens,
-        session: this.sessionId
-      });
-      
-      return targetTokens;
-    }
-    
-    // After initial chunks, keep input tokens constant
-    return this.cumulativeUsage.input_tokens;
   }
 
   /**
@@ -122,12 +81,8 @@ export class StreamingToolCallState {
     const events: Anthropic.Messages.MessageStreamEvent[] = [];
     const delta = chunk.choices?.[0]?.delta;
     
-    // Increment chunk counter for input token accumulation
-    this.totalChunksSeen++;
-    
     Logger.debug('Processing OpenAI chunk', {
       chunk_id: chunk.id,
-      chunk_number: this.totalChunksSeen,
       has_usage: !!chunk.usage,
       usage: chunk.usage,
       delta_keys: delta ? Object.keys(delta) : [],
@@ -166,18 +121,6 @@ export class StreamingToolCallState {
           text: delta.content
         }
       } as Anthropic.Messages.ContentBlockDeltaEvent);
-      
-      this.accumulatedContent += delta.content;
-      
-      // Update estimated output tokens
-      const estimatedOutputTokens = estimateTokens(this.accumulatedContent);
-      this.cumulativeUsage.output_tokens = estimatedOutputTokens;
-      
-      Logger.debug('Accumulated content for token estimation', {
-        content_length: this.accumulatedContent.length,
-        estimated_output_tokens: estimatedOutputTokens,
-        session: this.sessionId
-      });
     }
 
     // Process tool calls in the delta
@@ -195,22 +138,17 @@ export class StreamingToolCallState {
       events.push(...completionEvents);
     }
 
-    // Handle actual usage information from OpenAI (overrides estimates)
+    // Store actual usage information from OpenAI
     if (chunk.usage) {
-      const previousInput = this.cumulativeUsage.input_tokens;
-      const previousOutput = this.cumulativeUsage.output_tokens;
+      this.actualUsage = {
+        input_tokens: chunk.usage.prompt_tokens || 0,
+        output_tokens: chunk.usage.completion_tokens || 0
+      };
       
-      this.cumulativeUsage.input_tokens = chunk.usage.prompt_tokens || this.estimatedInputTokens;
-      this.cumulativeUsage.output_tokens = chunk.usage.completion_tokens || 0;
-      
-      Logger.debug('Updated cumulative usage from OpenAI chunk', { 
+      Logger.debug('Received actual usage from OpenAI', { 
         openai_usage: chunk.usage,
-        previous_usage: { input_tokens: previousInput, output_tokens: previousOutput },
-        accumulated_usage: this.cumulativeUsage,
-        estimated_vs_actual: {
-          input_diff: this.cumulativeUsage.input_tokens - this.estimatedInputTokens,
-          output_diff: this.cumulativeUsage.output_tokens - estimateTokens(this.accumulatedContent)
-        },
+        actual_usage: this.actualUsage,
+        estimated_input: this.estimatedInputTokens,
         session: this.sessionId 
       });
     }
@@ -285,12 +223,7 @@ export class StreamingToolCallState {
           partial_json: toolCallDelta.function.arguments
         }
       } as Anthropic.Messages.ContentBlockDeltaEvent);
-      
-      // Also track tool arguments for token estimation
-      this.accumulatedContent += toolCallDelta.function.arguments;
-      const estimatedOutputTokens = estimateTokens(this.accumulatedContent);
-      this.cumulativeUsage.output_tokens = estimatedOutputTokens;
-      
+
       // Don't emit usage updates for tool calls - Anthropic doesn't do this
     }
 
@@ -328,10 +261,17 @@ export class StreamingToolCallState {
     // Emit final message_delta with stop_reason and complete usage for claude-code
     const stopReason = finishReason ? this.translateFinishReason(finishReason) : 'end_turn';
     
+    // Use actual usage from OpenAI if available, otherwise use estimates
+    const finalUsage = this.actualUsage || {
+      input_tokens: this.estimatedInputTokens,
+      output_tokens: 0  // We don't estimate output tokens
+    };
+    
     Logger.debug('Sending final streaming event with stop_reason and usage', {
       finish_reason: finishReason,
       translated_stop_reason: stopReason,
-      final_usage: this.cumulativeUsage,
+      final_usage: finalUsage,
+      has_actual_usage: !!this.actualUsage,
       session: this.sessionId
     });
     
@@ -342,8 +282,8 @@ export class StreamingToolCallState {
         stop_sequence: null
       },
       usage: {
-        input_tokens: this.cumulativeUsage.input_tokens,
-        output_tokens: this.cumulativeUsage.output_tokens,
+        input_tokens: finalUsage.input_tokens,
+        output_tokens: finalUsage.output_tokens,
         cache_creation_input_tokens: null,
         cache_read_input_tokens: null,
         server_tool_use: null,
@@ -374,7 +314,7 @@ export class StreamingToolCallState {
         stop_reason: null,
         stop_sequence: null,
         usage: {
-          input_tokens: 0,
+          input_tokens: this.estimatedInputTokens,
           output_tokens: 0,
           cache_creation_input_tokens: null,
           cache_read_input_tokens: null,
@@ -409,7 +349,7 @@ export class StreamingToolCallState {
     completedCalls: number; 
     toolNames: string[];
     hasEmittedStart: boolean;
-    usage: { input_tokens: number; output_tokens: number };
+    usage: { input_tokens: number; output_tokens: number } | null;
   } {
     const activeCalls = Array.from(this.toolCalls.values()).filter(tc => tc.hasStartedStreaming && !tc.isComplete).length;
     const completedCalls = Array.from(this.toolCalls.values()).filter(tc => tc.isComplete).length;
@@ -420,7 +360,7 @@ export class StreamingToolCallState {
       completedCalls,
       toolNames,
       hasEmittedStart: this.hasEmittedMessageStart,
-      usage: { ...this.cumulativeUsage }
+      usage: this.actualUsage
     };
   }
 
@@ -430,10 +370,8 @@ export class StreamingToolCallState {
   clear(): void {
     this.toolCalls.clear();
     this.hasEmittedMessageStart = false;
-    this.cumulativeUsage = { input_tokens: 0, output_tokens: 0 };
-    this.accumulatedContent = '';
-    this.inputTokensReported = 0;
-    this.totalChunksSeen = 0;
+    this.actualUsage = null;
+    this.estimatedInputTokens = 0;
     this.hasEmittedContentBlockStart = false;
     this.contentBlockIndex = 0;
     Logger.debug('Cleared streaming tool call state', { sessionId: this.sessionId });
