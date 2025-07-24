@@ -55,11 +55,19 @@ export class TranslationService {
     };
 
     if (request.stream) {
-      return {
+      const streamingParams = {
         ...baseParams,
         stream: true,
         stream_options: { include_usage: true },
       } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+      
+      Logger.debug('Creating streaming OpenAI request with usage tracking', {
+        stream: streamingParams.stream,
+        stream_options: streamingParams.stream_options,
+        model: streamingParams.model
+      });
+      
+      return streamingParams;
     } else {
       return {
         ...baseParams,
@@ -493,6 +501,20 @@ export class TranslationService {
 
     const stopReason = this.translateOpenAIFinishReason(choice.finish_reason);
 
+    const usage = {
+      input_tokens: response.usage?.prompt_tokens || 0,
+      output_tokens: response.usage?.completion_tokens || 0,
+      cache_creation_input_tokens: null,
+      cache_read_input_tokens: null,
+      server_tool_use: null,
+      service_tier: 'standard' as Anthropic.Messages.Usage['service_tier']
+    };
+
+    Logger.debug('Non-streaming usage mapping', { 
+      original: response.usage,
+      translated: usage 
+    });
+
     const translatedResponse = {
       id: response.id,
       type: 'message',
@@ -501,17 +523,7 @@ export class TranslationService {
       model: originalModel,
       stop_reason: stopReason,
       stop_sequence: null,
-      usage: {
-        input_tokens: response.usage?.prompt_tokens || 0,
-        output_tokens: response.usage?.completion_tokens || 0,
-        // These fields are not provided by OpenAI, so we set them to null
-        // as they represent Anthropic-specific features
-        cache_creation_input_tokens: null,
-        cache_read_input_tokens: null,
-        server_tool_use: null,
-        // OpenAI doesn't have service tiers like Anthropic, default to standard
-        service_tier: 'standard' as Anthropic.Messages.Usage['service_tier']
-      },
+      usage,
     } as Anthropic.Messages.Message;
 
     // Log final response details for tool result flow analysis
