@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { AnthropicRequest } from '../types';
 import { TranslationService } from '../services/translation';
 import { OpenAIService } from '../services/openai';
@@ -50,7 +51,7 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
         const stream = await openAIService.createChatCompletionStream(streamRequest);
           
         // Create streaming tool call state manager for this session
-        const toolCallState = new StreamingToolCallState('stream');
+        const toolCallState = new StreamingToolCallState('stream', request.model, request);
         
         for await (const chunk of stream) {
           try {
@@ -59,6 +60,29 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
             
             // Send each event
             for (const anthropicChunk of anthropicEvents) {
+              if (anthropicChunk.type === 'message_delta' && anthropicChunk.usage) {
+                Logger.debug('Streaming usage event sent to claude-code', { 
+                  usage: anthropicChunk.usage,
+                  event_type: anthropicChunk.type,
+                  event_structure: {
+                    type: anthropicChunk.type,
+                    delta: anthropicChunk.delta,
+                    usage: anthropicChunk.usage
+                  }
+                });
+              }
+              
+              // Log all streaming events for debugging
+              Logger.debug('Streaming event sent', {
+                event_type: anthropicChunk.type,
+                has_usage: !!(anthropicChunk as Anthropic.Messages.MessageDeltaEvent).usage,
+                event_data: anthropicChunk
+              });
+              
+              // Write in SSE format with event type
+              if (anthropicChunk.type) {
+                res.write(`event: ${anthropicChunk.type}\n`);
+              }
               res.write(`data: ${JSON.stringify(anthropicChunk)}\n\n`);
             }
           } catch (error) {
@@ -67,29 +91,40 @@ router.post('/', validateAnthropicRequest, async (req, res, next) => {
         }
 
         
-        res.write('data: [DONE]\n\n');
+        // Don't send [DONE] - Anthropic doesn't use it
         res.end();
 
       } catch (error) {
         
         if (error instanceof OpenAI.APIError) {
           Logger.error('OpenAI API Stream Error', { message: error.message, status: error.status });
+          res.write(`event: error\n`);
           res.write(`data: ${JSON.stringify({ error: `OpenAI API error: ${error.message}` })}\n\n`);
         } else {
           Logger.error('Stream error', { error });
+          res.write(`event: error\n`);
           res.write(`data: ${JSON.stringify({ error: 'Stream error' })}\n\n`);
         }
         res.end();
       }
     } else {
-      const startTime = Date.now();
       const nonStreamRequest = openAIRequest as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
       const openAIResponse = await openAIService.createChatCompletion(nonStreamRequest);
       
       const anthropicResponse = TranslationService.openAIToAnthropic(openAIResponse, request.model);
       
-      const endTime = Date.now();
-      
+      Logger.debug('Non-streaming response sent to claude-code', { 
+        usage: anthropicResponse.usage,
+        response_id: anthropicResponse.id,
+        response_structure: {
+          id: anthropicResponse.id,
+          type: anthropicResponse.type,
+          role: anthropicResponse.role,
+          model: anthropicResponse.model,
+          stop_reason: anthropicResponse.stop_reason,
+          usage_complete: anthropicResponse.usage
+        }
+      });
       
       res.json(anthropicResponse);
     }
