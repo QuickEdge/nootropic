@@ -1,15 +1,16 @@
-# OpenAI Anthropic Proxy
+# Nootropic - Anthropic to OpenAI Proxy
 
-A reverse proxy that wraps the OpenAI API to conform to Anthropic's protocol, allowing you to use OpenAI GPT models as drop-in replacements for Anthropic Claude models in existing applications.
+A reverse proxy that accepts requests in Anthropic's API format and translates them to OpenAI-compatible API calls, allowing applications using Anthropic's API to connect to OpenAI-compatible services (OpenAI, Groq, OpenRouter, or custom endpoints).
 
 ## Features
 
 - **Drop-in replacement**: Use with any Anthropic client library
-- **Streaming support**: Real-time streaming responses
-- **Tool calling**: Function calling capabilities
-- **Multi-modal**: Support for images and text
-- **Error handling**: Proper HTTP status codes and error messages
-- **Model mapping**: Automatic translation between Anthropic and OpenAI model names
+- **Streaming support**: Real-time streaming responses with proper SSE formatting
+- **Tool calling**: Full support for Anthropic's tool use format, translated to OpenAI function calling
+- **Multi-modal**: Support for images (base64-encoded) and text content
+- **Error handling**: Proper Anthropic-style error responses
+- **Flexible routing**: Configure multiple models from different providers
+- **Interactive config editor**: Built-in CLI tool for easy configuration
 
 ## Quick Start
 
@@ -17,8 +18,8 @@ A reverse proxy that wraps the OpenAI API to conform to Anthropic's protocol, al
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-org/anthropic-openai-proxy.git
-cd anthropic-openai-proxy
+git clone https://github.com/your-org/nootropic.git
+cd nootropic
 ```
 
 2. Install dependencies:
@@ -26,10 +27,12 @@ cd anthropic-openai-proxy
 npm install
 ```
 
-3. Configure environment variables:
+3. Configure the proxy:
 ```bash
-cp .env.example .env
-# Edit .env and add your OpenAI API key
+# Run the interactive configuration editor
+npm run config
+
+# Or manually create config at ~/.config/nootropic/config.toml
 ```
 
 4. Start the server:
@@ -71,7 +74,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({
   baseURL: 'http://localhost:3000',
-  apiKey: 'any-key', // API key is ignored, OpenAI key is used from env
+  apiKey: 'any-key', // Can be any value - actual API keys are in config
 });
 
 const message = await anthropic.messages.create({
@@ -121,17 +124,13 @@ for await (const chunk of stream) {
 }
 ```
 
-## Model Mapping
+## Model Configuration
 
-The proxy automatically maps Anthropic model names to OpenAI models:
-
-| Anthropic Model | OpenAI Model |
-|-----------------|--------------|
-| claude-3-opus-20240229 | gpt-4 |
-| claude-3-sonnet-20240229 | gpt-4-turbo |
-| claude-3-5-sonnet-20241022 | gpt-4o |
-| claude-3-haiku-20240307 | gpt-4o-mini |
-| claude-3-haiku-20240307 | gpt-3.5-turbo |
+Models are configured in `~/.config/nootropic/config.toml`. You can:
+- Configure multiple models from different providers
+- Set custom model mappings
+- Use models from OpenAI, Groq, OpenRouter, or any OpenAI-compatible API
+- Route specific Anthropic model names to your configured models
 
 ## Configuration
 
@@ -139,10 +138,8 @@ The proxy automatically maps Anthropic model names to OpenAI models:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | Your OpenAI API key | Required |
-| `PORT` | Server port | 3000 |
-| `NODE_ENV` | Environment mode | development |
-| `LOG_LEVEL` | Logging level | info |
+| `PORT` | Server port (overrides config) | 3000 |
+| `CONFIG_PATH` | Custom config file path | `~/.config/nootropic/config.toml` |
 
 ### Available Endpoints
 
@@ -152,65 +149,68 @@ The proxy automatically maps Anthropic model names to OpenAI models:
 - `GET /health` - Health check endpoint
 - `GET /` - Basic info endpoint
 
-### Configuration
+### Configuration File
 
-The proxy uses a JSON configuration file located at `~/.config/nootropic/config.json`. This replaces all environment variables.
+The proxy uses a TOML configuration file located at `~/.config/nootropic/config.toml`.
 
 #### Configuration Structure
 
-```json
-{
-  "logging": {
-    "enabled": true,           // Enable/disable logging
-    "level": "info",           // debug|info|warn|error
-    "format": "json"           // json|text
-  },
-  "server": {
-    "port": 3000,
-    "host": "localhost",
-    "cors": { "enabled": true, "origins": ["*"] }
-  },
-  "models": [
-    {
-      "id": "claude-3-5-sonnet-20241022",
-      "display_name": "Claude 3.5 Sonnet",
-      "provider": "openai",
-      "config": {
-        "base_url": "https://api.openai.com/v1",    // ✅ Used by OpenAI API
-        "api_key": "sk-your-key",                   // ✅ Used by OpenAI API
-        "model_name": "gpt-4o",                     // ✅ Used by OpenAI API
-        "max_tokens": 128000,                       // ✅ Used by OpenAI API
-        "temperature_range": [0, 2],                // ❌ For /v1/models only
-        "supports_streaming": true,                 // ❌ For /v1/models only
-        "supports_tools": true,                     // ❌ For /v1/models only
-        "supports_vision": true                     // ❌ For /v1/models only
-      }
-    }
-  ],
-  "defaults": {
-    "model": "claude-3-5-sonnet-20241022",
-    "max_tokens": 4096,
-    "temperature": 0.7,
-    "stream": false
-  }
-}
+```toml
+[logging]
+enabled = true
+level = "info"     # debug|info|warn|error
+format = "text"    # json|text
+
+[server]
+port = 3000
+host = "localhost"
+
+[server.cors]
+enabled = true
+origins = ["*"]
+
+[[models]]
+display_name = "gpt-4o"          # Model name shown to Anthropic clients
+provider = "openai"              # Provider type
+
+[models.config]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-openai-key"
+model_name = "gpt-4o"            # Actual model name sent to provider
+max_tokens = 128000              # Optional: override max tokens
+
+[[models]]
+display_name = "mixtral-8x7b"
+provider = "groq"
+
+[models.config]
+base_url = "https://api.groq.com/openai/v1"
+api_key = "your-groq-key"
+model_name = "mixtral-8x7b-32768"
+
+[defaults]
+max_tokens = 4096
+temperature = 0.7
+stream = false
+
+[model_routing]
+default_model_display_name = "gpt-4o"
+route_claude_models_to_default = true  # Route unrecognized models to default
 ```
 
 #### Configuration Fields Explained
 
-**Used by OpenAI API:**
+**Model Configuration:**
+- `display_name`: The model identifier shown to Anthropic clients
+- `provider`: Provider type (openai, groq, openrouter, custom)
 - `config.base_url`: The OpenAI-compatible API endpoint
 - `config.api_key`: Your API key for the provider
 - `config.model_name`: The actual model name the provider expects
-- `config.max_tokens`: Maximum tokens reported to Anthropic clients
+- `config.max_tokens`: Optional max token override
 
-**Used for /v1/models endpoint only:**
-- `temperature_range`: Advertised to Anthropic clients as supported range
-- `supports_streaming`: Tells Anthropic clients if streaming is supported
-- `supports_tools`: Tells Anthropic clients if tool use is supported
-- `supports_vision`: Tells Anthropic clients if vision input is supported
-
-**Note**: These "support" fields don't affect actual OpenAI API calls - they simply inform Anthropic clients about capabilities. The actual feature support depends on the underlying OpenAI-compatible model you configure.
+**Model Routing:**
+- `default_model_display_name`: Default model when none specified
+- `route_claude_models_to_default`: Route requests for Claude models to your default
 
 ## API Examples
 
@@ -298,6 +298,7 @@ The proxy uses a JSON configuration file located at `~/.config/nootropic/config.
 - `npm run dev` - Start development server with hot reload
 - `npm run build` - Build for production
 - `npm start` - Start production server
+- `npm run config` - Run interactive configuration editor
 - `npm test` - Run tests
 - `npm run lint` - Lint code
 - `npm run typecheck` - Type checking
@@ -308,14 +309,22 @@ The proxy uses a JSON configuration file located at `~/.config/nootropic/config.
 src/
 ├── index.ts                 # Server entry point
 ├── routes/
-│   └── messages.ts          # Anthropic-compatible endpoints
+│   ├── messages.ts          # Anthropic messages endpoint
+│   └── models.ts            # Model listing endpoints
 ├── services/
 │   ├── translation.ts       # Anthropic ↔ OpenAI translation
-│   └── openai.ts            # OpenAI API client
+│   ├── openai.ts            # OpenAI API client
+│   └── streaming-tool-state.ts # Streaming response handler
 ├── middleware/
-│   └── error-handler.ts     # Error handling
+│   ├── error-handler.ts     # Error handling
+│   └── request-validation.ts # Request validation
+├── utils/
+│   ├── config.ts            # Configuration management
+│   └── logger.ts            # Logging utilities
+├── config-editor/
+│   └── index.ts             # Interactive CLI configuration
 └── types/
-    └── index.ts            # TypeScript definitions
+    └── index.ts             # TypeScript definitions
 ```
 
 ## Error Handling
@@ -338,12 +347,19 @@ Common errors:
 - `429 Too Many Requests` - Rate limit exceeded
 - `500 Internal Server Error` - Server error
 
-## Limitations
+## Features and Limitations
 
-- **Authentication**: Uses OpenAI API key from environment, ignores Anthropic x-api-key header
-- **Model Selection**: Limited to pre-defined model mappings
-- **Streaming**: Limited streaming event types compared to Anthropic
-- **Tool Responses**: Complex tool use scenarios may have edge cases
+### Supported Features:
+- **Full message translation**: All Anthropic message formats
+- **Image support**: Base64-encoded images in messages
+- **Tool use**: Complete tool calling with streaming support
+- **Multiple providers**: OpenAI, Groq, OpenRouter, custom endpoints
+- **Flexible configuration**: Per-model settings and routing
+
+### Current Limitations:
+- **Authentication**: Ignores Anthropic x-api-key header (uses configured keys)
+- **Beta features**: Some Anthropic beta features may not be fully supported
+- **Token counting**: Estimated for streaming responses
 
 ## Contributing
 
