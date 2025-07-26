@@ -427,7 +427,6 @@ export class TranslationService {
   }
 
   private static translateModel(anthropicModel: string, modelConfig: ModelConfig): string {
-    // Simply use the model_name from the provided modelConfig
     return modelConfig.config.model_name;
   }
 

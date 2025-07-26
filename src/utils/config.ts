@@ -227,7 +227,7 @@ export class ConfigManager {
     
     const diffResult: TOML.JsonMap = {};
     
-    // Handle non-array sections with just-diff
+    // Handle non-array sections
     const sections = ['logging', 'server', 'defaults', 'model_routing'] as const;
     for (const section of sections) {
       const sectionDiff = diff(DEFAULT_CONFIG[section], this.config[section]);

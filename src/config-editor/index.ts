@@ -80,7 +80,6 @@ export class InteractiveConfigEditor {
           Logger.info('Config editor exiting - Goodbye! 👋');
           return;
         }
-        Logger.error('Config editor error', { error });
         Logger.error('Config editor operation failed', { error });
       }
     }
@@ -175,21 +174,17 @@ export class InteractiveConfigEditor {
       }
       this.config.model_routing.default_model_display_name = newModel.display_name;
       if (this.config.models.length === 1) {
-        Logger.info('Set first model as default', { displayName: newModel.display_name });
-        Logger.info('⭐ Set as default model (first model added)');
+        Logger.info('⭐ Set as default model (first model added)', { displayName: newModel.display_name });
       } else {
-        Logger.info('Set model as default (no default was set)', { displayName: newModel.display_name });
-        Logger.info('⭐ Set as default model (no default was set)');
+        Logger.info('⭐ Set as default model (no default was set)', { displayName: newModel.display_name });
       }
     }
 
-    Logger.info('Model added successfully', { displayName: newModel.display_name, provider: newModel.provider });
-    Logger.info(`✅ Model "${newModel.display_name}" added successfully!`);
+    Logger.info(`✅ Model "${newModel.display_name}" added successfully!`, { provider: newModel.provider });
   }
 
   private async editModel(): Promise<void> {
     if (this.config.models.length === 0) {
-      Logger.warn('No models available to edit');
       Logger.warn('⚠️  No models to edit.');
       return;
     }
@@ -337,13 +332,11 @@ export class InteractiveConfigEditor {
       }
     }
 
-    Logger.info('Model updated successfully', { displayName: model.display_name });
     Logger.info(`✅ Model "${model.display_name}" editing complete!`);
   }
 
   private async removeModel(): Promise<void> {
     if (this.config.models.length === 0) {
-      Logger.warn('No models available to remove');
       Logger.warn('⚠️  No models to remove.');
       return;
     }
@@ -355,17 +348,14 @@ export class InteractiveConfigEditor {
     
     if (confirm) {
       this.config.models = this.config.models.filter(m => m.display_name !== displayName);
-      Logger.info('Model removed successfully', { displayName: model.display_name });
       Logger.info(`✅ Model "${model.display_name}" removed successfully!`);
     } else {
-      Logger.info('Model removal cancelled', { displayName: model.display_name });
       Logger.info('❌ Removal cancelled.');
     }
   }
 
   private async setDefaultModel(): Promise<void> {
     if (this.config.models.length === 0) {
-      Logger.warn('No models available to set as default');
       Logger.warn('⚠️  No models available to set as default.');
       return;
     }
@@ -377,7 +367,6 @@ export class InteractiveConfigEditor {
     this.config.model_routing.default_model_display_name = displayName;
     
     const model = this.config.models.find(m => m.display_name === displayName);
-    Logger.info('Default model updated', { displayName: model?.display_name });
     Logger.info(`✅ Default model set to: ${model?.display_name}`);
   }
 
@@ -452,15 +441,12 @@ export class InteractiveConfigEditor {
         const configManager = ConfigManager.getInstance(true);
         configManager.updateConfig(this.config);
         configManager.saveConfig();
-        Logger.info('Configuration saved successfully', { configPath: this.configPath });
-        Logger.info('✅ Configuration saved successfully!');
+        Logger.info('✅ Configuration saved successfully!', { configPath: this.configPath });
       } catch (error) {
-        Logger.error('Failed to save configuration', { error, configPath: this.configPath });
-        Logger.error('❌ Failed to save configuration:', { error });
+        Logger.error('❌ Failed to save configuration:', { error, configPath: this.configPath });
         throw error;
       }
     } else {
-      Logger.info('Configuration changes discarded');
       Logger.info('❌ Changes discarded.');
     }
   }
@@ -473,18 +459,15 @@ export class InteractiveConfigEditor {
                       JSON.stringify(this.config.models) !== JSON.stringify(originalConfig.models);
 
     if (hasChanges) {
-      Logger.warn('Exiting with unsaved changes');
       Logger.warn('⚠️  You have unsaved changes!');
       const { save } = await inquirer.prompt(prompts.saveChanges());
       if (save) {
         try {
           configManager.updateConfig(this.config);
           configManager.saveConfig();
-          Logger.info('Configuration saved on exit', { configPath: this.configPath });
-          Logger.info('✅ Configuration saved successfully!');
+          Logger.info('✅ Configuration saved successfully!', { configPath: this.configPath });
         } catch (error) {
-          Logger.error('Failed to save configuration on exit', { error, configPath: this.configPath });
-          Logger.error('❌ Failed to save configuration:', { error });
+          Logger.error('❌ Failed to save configuration:', { error, configPath: this.configPath });
           throw error;
         }
       }
