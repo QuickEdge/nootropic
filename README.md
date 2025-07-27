@@ -361,7 +361,15 @@ Common errors:
 - **Beta features**: Some Anthropic beta features may not be fully supported
 - **Token counting**: Estimated for streaming responses
 
-## Contributing
+## Contributing & Vibe Coding
+
+This entire project has been developed using Claude Code, and AI-generated contributions are more than welcome! We embrace the collaborative spirit of human-AI pair programming.
+
+### A Note on AI Development
+
+⚠️ **Notice**: This software has been primarily developed through AI assistance. While extensively tested and functional, it represents a new paradigm in software development where AI agents handle the implementation details. As with any software, please review and test thoroughly before production use.
+
+### How to Contribute
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature-name`
@@ -371,6 +379,8 @@ Common errors:
 6. Commit your changes: `git commit -am 'Add feature'`
 7. Push to the branch: `git push origin feature-name`
 8. Submit a pull request
+
+Whether you're coding with Claude, GitHub Copilot, or your own fingers, all contributions are welcome after passing code review!
 
 ## License
 
